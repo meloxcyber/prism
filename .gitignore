@@ -1,0 +1,11 @@
+# local, per-machine settings (never overwritten by updates)
+config.json
+apps.local.json
+
+# build / runtime
+dist/
+node_modules/
+__pycache__/
+*.pyc
+*.mp3
+.vercel/

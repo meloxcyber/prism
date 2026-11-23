@@ -1,0 +1,9 @@
+{
+  "name": "prism-console",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Hosted console for PRISM: app launcher grid, voice cheat-sheet, and the apps.json the desktop assistant syncs from.",
+  "scripts": {
+    "build": "node scripts/build-web.mjs"
+  }
+}

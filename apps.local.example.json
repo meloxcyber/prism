@@ -1,0 +1,7 @@
+{
+  "_comment": "Copy to apps.local.json for apps that live only on this PC. Same schema as apps.json; same key overrides the shared entry.",
+  "apps": [
+    { "key": "pos", "name": "Point of Sale", "type": "path", "path": "C:\\Users\\blais\\Desktop\\POS.lnk", "aliases": ["point of sale", "the register"] },
+    { "key": "dev-server", "name": "Dev Server", "type": "command", "command": "cmd /c start http://localhost:3000", "aliases": ["local host", "dev site"] }
+  ]
+}

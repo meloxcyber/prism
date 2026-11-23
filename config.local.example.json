@@ -1,0 +1,7 @@
+{
+  "_comment": "Copy this file to config.json and change only what you want to override. Everything else comes from config.example.json.",
+  "address_user_as": "sir",
+  "voice": { "edge_voice": "en-GB-RyanNeural" },
+  "wake": { "clap_threshold": 0.22 },
+  "listen": { "input_device": null }
+}

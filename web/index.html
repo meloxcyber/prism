@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRISM Console</title>
+<meta name="description" content="PRISM — launcher grid, voice cheat-sheet and the live app registry for the desktop assistant.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,8 94,88 6,88' fill='none' stroke='%23e8e8f0' stroke-width='8'/><line x1='6' y1='60' x2='50' y2='60' stroke='%23ff5c7a' stroke-width='6'/><line x1='50' y1='60' x2='94' y2='40' stroke='%2358a6ff' stroke-width='6'/></svg>">
+<style>
+  :root{
+    --bg:#0b0b10; --panel:#13131b; --panel-2:#191925; --line:#262636; --text:#e8e8f0; --muted:#8e8ea3;
+    --accent:#58a6ff; --ok:#3fd68b; --warn:#f5b547;
+    --spectrum:linear-gradient(90deg,#ff5c7a,#ffb347,#f9f871,#3fd68b,#58a6ff,#b388ff);
+    --radius:14px; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body::before{content:"";position:fixed;inset:0 0 auto 0;height:3px;background:var(--spectrum);z-index:10}
+  a{color:var(--accent);text-decoration:none}
+  .wrap{max-width:1180px;margin:0 auto;padding:40px 22px 80px}
+  header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:28px}
+  .brand{display:flex;align-items:center;gap:14px}
+  .brand svg{width:44px;height:44px}
+  h1{margin:0;font-size:30px;letter-spacing:.18em;font-weight:700}
+  .tag{color:var(--muted);font-size:13px;margin-top:4px}
+  .status{display:flex;gap:10px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 12px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+  .pill b{color:var(--text);font-weight:600}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  .search{position:relative;margin:8px 0 22px}
+  .search input{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:var(--radius);padding:16px 18px 16px 48px;font-size:16px;outline:none;transition:border-color .15s}
+  .search input:focus{border-color:var(--accent)}
+  .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);width:20px;height:20px;color:var(--muted)}
+  .search kbd{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:2px 7px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 16px 14px;display:flex;flex-direction:column;gap:10px;transition:transform .12s,border-color .12s;position:relative;overflow:hidden}
+  .card::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--spectrum);opacity:0;transition:opacity .15s}
+  .card:hover{transform:translateY(-2px);border-color:#34344a}
+  .card:hover::after{opacity:1}
+  .card h3{margin:0;font-size:16px;font-weight:600;line-height:1.3}
+  .card .note{color:var(--muted);font-size:13px;line-height:1.45;min-height:2.6em}
+  .say{display:flex;flex-wrap:wrap;gap:6px}
+  .say span{font-size:11.5px;color:var(--muted);border:1px dashed var(--line);border-radius:7px;padding:3px 7px;font-family:var(--mono)}
+  .say span::before{content:"“";opacity:.5}.say span::after{content:”";opacity:.5}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
+  .key{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .btn{display:inline-flex;align-items:center;gap:6px;background:var(--text);color:#0b0b10;border:0;border-radius:9px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer}
+  .btn:hover{background:#fff}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);cursor:default}
+  section{margin-top:56px}
+  h2{font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0 0 16px;font-weight:600}
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+  .panel h4{margin:0 0 10px;font-size:15px}
+  .panel p,.panel li{color:var(--muted);font-size:14px;line-height:1.55}
+  .panel ol,.panel ul{padding-left:18px;margin:8px 0}
+  .panel code{font-family:var(--mono);font-size:12.5px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--text)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td{padding:9px 0;border-top:1px solid var(--line);vertical-align:top;color:var(--muted)}
+  td:first-child{color:var(--text);font-family:var(--mono);font-size:13px;width:52%;padding-right:12px}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:13.5px}
+  .flow .node{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+  .flow .node small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+  .flow .arrow{color:var(--muted)}
+  .empty{color:var(--muted);padding:40px;text-align:center;grid-column:1/-1}
+  footer{margin-top:60px;color:var(--muted);font-size:12.5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-family:var(--mono)}
+  @media (max-width:600px){h1{font-size:24px}.wrap{padding:28px 14px 60px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,8 94,88 6,88" fill="none" stroke="#e8e8f0" stroke-width="6"/><line x1="4" y1="62" x2="50" y2="62" stroke="#e8e8f0" stroke-width="4"/><line x1="50" y1="62" x2="98" y2="46" stroke="#ff5c7a" stroke-width="4"/><line x1="50" y1="62" x2="98" y2="56" stroke="#3fd68b" stroke-width="4"/><line x1="50" y1="62" x2="98" y2="66" stroke="#58a6ff" stroke-width="4"/></svg>
+      <div><h1>PRISM</h1><div class="tag">Console · launcher grid · live app registry for the desktop assistant</div></div>
+    </div>
+    <div class="status">
+      <span class="pill"><span class="dot"></span><b id="count">—</b>&nbsp;apps</span>
+      <span class="pill">build <b id="commit">—</b></span>
+      <span class="pill" id="built" title="">updated —</span>
+    </div>
+  </header>
+
+  <div class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="Search apps or things you'd say… (buy desk, drop calendar, duel night)" autocomplete="off">
+    <kbd>/</kbd>
+  </div>
+
+  <div class="grid" id="grid"><div class="empty">Loading apps…</div></div>
+
+  <section>
+    <h2>Voice cheat-sheet</h2>
+    <div class="cols">
+      <div class="panel">
+        <table>
+          <tr><td>👏👏</td><td>Wake. Weather greeting on the first wake and after an hour away; otherwise “Yes, sir?”</td></tr>
+          <tr><td>open / pull up / show me the ___</td><td>Opens the app instantly (no Claude round-trip)</td></tr>
+          <tr><td>what's the weather · forecast</td><td>Current conditions, high/low, rain chance</td></tr>
+          <tr><td>what time is it · what's the date</td><td>Local time</td></tr>
+          <tr><td>what can you open</td><td>Reads the registry aloud</td></tr>
+          <tr><td>anything else</td><td>Goes to Claude (your Claude Code login), answered in one or two calm sentences</td></tr>
+          <tr><td>that's all · goodbye · go to sleep</td><td>“Very good. Standing by.” → back to clap-listening</td></tr>
+        </table>
+      </div>
+      <div class="panel">
+        <h4>How updates flow</h4>
+        <div class="flow">
+          <div class="node">Ask Claude<small>“add my Shopify admin”</small></div><span class="arrow">→</span>
+          <div class="node">GitHub<small>meloxcyber/prism</small></div><span class="arrow">→</span>
+          <div class="node">Vercel<small>this console + /apps.json</small></div><span class="arrow">→</span>
+          <div class="node">Your PC<small>PRISM.bat pulls on launch</small></div>
+        </div>
+        <p style="margin-top:14px">Code changes arrive via <code>git pull</code> when you start PRISM. App-list changes arrive even without a restart of the repo: the assistant fetches <a href="/apps.json">/apps.json</a> from this site on start-up. Personal entries go in <code>apps.local.json</code> and are never overwritten.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Set up on a new PC</h2>
+    <div class="cols">
+      <div class="panel">
+        <h4>1 · Prerequisites</h4>
+        <ul>
+          <li>Python 3.10+ with “Add to PATH” ticked</li>
+          <li>Git for Windows</li>
+          <li>Claude Code — run <code>claude</code> once and sign in</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h4>2 · Get PRISM</h4>
+        <p><code>git clone https://github.com/meloxcyber/prism</code><br>then double-click <code>install.bat</code>.</p>
+        <p>Optional: copy <code>config.local.example.json</code> → <code>config.json</code> to change the voice, clap sensitivity or mic.</p>
+      </div>
+      <div class="panel">
+        <h4>3 · Run</h4>
+        <p>Double-click <code>PRISM.bat</code> and clap twice. <code>PRISM.bat --calibrate</code> tunes the clap threshold for your room; <code>autostart.bat</code> launches it at sign-in.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>PRISM · <a href="https://github.com/meloxcyber/prism">github.com/meloxcyber/prism</a></span>
+    <span id="foot">Desktop-only entries (paths, commands) show here but open from the PC.</span>
+  </footer>
+</div>
+
+<script>
+(async () => {
+  const grid = document.getElementById('grid');
+  const q = document.getElementById('q');
+  let apps = [];
+  try {
+    const r = await fetch('/apps.json', {cache: 'no-store'});
+    const j = await r.json();
+    apps = (j.apps || j).filter(a => a && a.key);
+  } catch (e) {
+    grid.innerHTML = '<div class="empty">Could not load apps.json</div>';
+    return;
+  }
+  try {
+    const m = await (await fetch('/meta.json', {cache: 'no-store'})).json();
+    document.getElementById('commit').textContent = m.commit || 'local';
+    const d = new Date(m.built_at);
+    const el = document.getElementById('built');
+    el.textContent = 'updated ' + d.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+    el.title = m.commit_message || '';
+  } catch {}
+  document.getElementById('count').textContent = apps.length;
+
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const render = (list) => {
+    if (!list.length) { grid.innerHTML = '<div class="empty">No match. Try another word.</div>'; return; }
+    grid.innerHTML = list.map(a => {
+      const say = (a.aliases || []).slice(0, 2).map(s => `<span>${esc(s)}</span>`).join('');
+      const web = (a.type || 'url') === 'url' && a.url;
+      const btn = web
+        ? `<a class="btn" href="${esc(a.url)}" target="_blank" rel="noopener">Open ↗</a>`
+        : `<span class="btn ghost" title="Opens from the desktop assistant">desktop</span>`;
+      return `<article class="card">
+        <h3>${esc(a.name || a.key)}</h3>
+        <div class="note">${esc(a.note || '')}</div>
+        <div class="say">${say}</div>
+        <div class="row"><span class="key">${esc(a.key)}</span>${btn}</div>
+      </article>`;
+    }).join('');
+  };
+  const hay = a => [a.key, a.name, a.note, ...(a.aliases || [])].join(' ').toLowerCase();
+  const filter = () => {
+    const t = q.value.trim().toLowerCase();
+    render(t ? apps.filter(a => hay(a).includes(t)) : apps);
+  };
+  q.addEventListener('input', filter);
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); }
+    if (e.key === 'Escape') { q.value = ''; filter(); q.blur(); }
+  });
+  render(apps);
+})();
+</script>
+</body>
+</html>
