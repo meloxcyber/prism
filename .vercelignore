@@ -1,0 +1,7 @@
+# Desktop-only files: keep Vercel from detecting a Python project and pip-installing audio libs.
+prism.py
+requirements.txt
+*.bat
+config.local.example.json
+apps.local.example.json
+__pycache__
