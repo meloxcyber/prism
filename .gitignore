@@ -1,6 +1,7 @@
 # local, per-machine settings (never overwritten by updates)
 config.json
 apps.local.json
+apps.cache.json
 
 # build / runtime
 dist/

@@ -49,6 +49,7 @@ CONFIG_PATH = HERE / "config.json"              # your local settings (git-ignor
 CONFIG_EXAMPLE = HERE / "config.example.json"   # defaults shipped with the repo
 APPS_PATH = HERE / "apps.json"                  # shared registry (updated via GitHub/Vercel)
 APPS_LOCAL = HERE / "apps.local.json"           # your personal additions (git-ignored)
+APPS_CACHE = HERE / "apps.cache.json"           # last copy synced from Vercel (git-ignored)
 COMMANDS_PATH = HERE / "commands.json"          # voice commands: matching + the HUD cheat sheet
 IS_WINDOWS = os.name == "nt"
 SAMPLE_RATE = 16000
@@ -189,13 +190,13 @@ def load_apps(sync_cfg: dict | None = None) -> list[dict]:
             remote = _get_json(url, timeout=float((sync_cfg or {}).get("timeout_s", 4)))
             apps = _apps_from(remote)
             if apps:
-                with open(APPS_PATH, "w", encoding="utf-8") as f:  # cache for offline use
+                with open(APPS_CACHE, "w", encoding="utf-8") as f:  # cache for offline use (never the tracked apps.json)
                     json.dump(remote, f, indent=2, ensure_ascii=False)
                 log(f"[dim]synced {len(apps)} apps from {url}[/dim]")
         except Exception as e:
             log(f"[yellow]App sync failed ({e}); using local apps.json[/yellow]")
     if not apps:
-        apps = _apps_from(_read_json(APPS_PATH))
+        apps = _apps_from(_read_json(APPS_CACHE)) or _apps_from(_read_json(APPS_PATH))
 
     # Personal additions/overrides, never touched by updates.
     merged = {a["key"]: a for a in apps}
