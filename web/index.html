@@ -64,6 +64,16 @@
   .flow .node small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
   .flow .arrow{color:var(--muted)}
   .empty{color:var(--muted);padding:40px;text-align:center;grid-column:1/-1}
+  .group{margin-top:34px}
+  .group:first-child{margin-top:0}
+  .group-head{display:flex;align-items:baseline;gap:12px;margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .group-head h2{margin:0}
+  .group-head .n{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .group-head .sub{color:var(--muted);font-size:13px;margin-left:auto}
+  .badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;border-radius:6px;padding:2px 7px}
+  .badge.vercel{background:#1b1b22;color:#fff;border:1px solid #3a3a48}
+  .badge.artifact{background:#1a1626;color:#c9b3ff;border:1px solid #3b2f5e}
+  .card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
   footer{margin-top:60px;color:var(--muted);font-size:12.5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-family:var(--mono)}
   @media (max-width:600px){h1{font-size:24px}.wrap{padding:28px 14px 60px}}
 </style>
@@ -88,7 +98,7 @@
     <kbd>/</kbd>
   </div>
 
-  <div class="grid" id="grid"><div class="empty">Loading apps…</div></div>
+  <div id="sections"><div class="grid"><div class="empty">Loading apps…</div></div></div>
 
   <section>
     <h2>Voice cheat-sheet</h2>
@@ -148,7 +158,6 @@
 
 <script>
 (async () => {
-  const grid = document.getElementById('grid');
   const q = document.getElementById('q');
   let apps = [];
   try {
@@ -156,7 +165,7 @@
     const j = await r.json();
     apps = (j.apps || j).filter(a => a && a.key);
   } catch (e) {
-    grid.innerHTML = '<div class="empty">Could not load apps.json</div>';
+    document.getElementById('sections').innerHTML = '<div class="grid"><div class="empty">Could not load apps.json</div></div>';
     return;
   }
   try {
@@ -170,20 +179,36 @@
   document.getElementById('count').textContent = apps.length;
 
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const SECTIONS = [
+    { id: 'vercel',   title: 'Vercel projects',  sub: 'Your hosted apps — full products, live data' },
+    { id: 'artifact', title: 'Claude artifacts', sub: 'Dashboards and tools built in Claude (open with your Claude login)' },
+    { id: 'other',    title: 'Other',            sub: '' },
+  ];
+  const sectionOf = a => SECTIONS.some(s => s.id === a.section) ? a.section : 'other';
+  const card = a => {
+    const say = (a.aliases || []).slice(0, 2).map(s => `<span>${esc(s)}</span>`).join('');
+    const web = (a.type || 'url') === 'url' && a.url;
+    const btn = web
+      ? `<a class="btn" href="${esc(a.url)}" target="_blank" rel="noopener">Open ↗</a>`
+      : `<span class="btn ghost" title="Opens from the desktop assistant">desktop</span>`;
+    const host = web ? esc(new URL(a.url).host.replace(/^www\./, '')) : esc(a.type || '');
+    return `<article class="card">
+      <div class="top"><h3>${esc(a.name || a.key)}</h3><span class="badge ${sectionOf(a)}">${sectionOf(a)}</span></div>
+      <div class="note">${esc(a.note || '')}<br><span class="key">${host}</span></div>
+      <div class="say">${say}</div>
+      <div class="row"><span class="key">${esc(a.key)}</span>${btn}</div>
+    </article>`;
+  };
+  const root = document.getElementById('sections');
   const render = (list) => {
-    if (!list.length) { grid.innerHTML = '<div class="empty">No match. Try another word.</div>'; return; }
-    grid.innerHTML = list.map(a => {
-      const say = (a.aliases || []).slice(0, 2).map(s => `<span>${esc(s)}</span>`).join('');
-      const web = (a.type || 'url') === 'url' && a.url;
-      const btn = web
-        ? `<a class="btn" href="${esc(a.url)}" target="_blank" rel="noopener">Open ↗</a>`
-        : `<span class="btn ghost" title="Opens from the desktop assistant">desktop</span>`;
-      return `<article class="card">
-        <h3>${esc(a.name || a.key)}</h3>
-        <div class="note">${esc(a.note || '')}</div>
-        <div class="say">${say}</div>
-        <div class="row"><span class="key">${esc(a.key)}</span>${btn}</div>
-      </article>`;
+    if (!list.length) { root.innerHTML = '<div class="grid"><div class="empty">No match. Try another word.</div></div>'; return; }
+    root.innerHTML = SECTIONS.map(sec => {
+      const items = list.filter(a => sectionOf(a) === sec.id);
+      if (!items.length) return '';
+      return `<section class="group">
+        <div class="group-head"><h2>${sec.title}</h2><span class="n">${items.length}</span>${sec.sub ? `<span class="sub">${sec.sub}</span>` : ''}</div>
+        <div class="grid">${items.map(card).join('')}</div>
+      </section>`;
     }).join('');
   };
   const hay = a => [a.key, a.name, a.note, ...(a.aliases || [])].join(' ').toLowerCase();

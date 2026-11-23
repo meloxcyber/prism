@@ -609,7 +609,8 @@ class Launcher:
 
     def catalogue(self) -> str:
         return "\n".join(
-            f'  - key="{a["key"]}"  name="{a.get("name", "")}"' + (f'  ({a["note"]})' if a.get("note") else "")
+            f'  - key="{a["key"]}"  name="{a.get("name", "")}"  [{a.get("section", "other")}]'
+            + (f'  ({a["note"]})' if a.get("note") else "")
             for a in self.apps
         )
 
@@ -809,8 +810,13 @@ class Prism:
             return True
 
         if LIST_RE.search(text):
-            names = [a.get("name", a["key"]) for a in self.launcher.apps]
-            self._speak("I can open " + ", ".join(names[:12]) + (", and more." if len(names) > 12 else "."))
+            vercel = [a.get("name", a["key"]) for a in self.launcher.apps if a.get("section") == "vercel"]
+            arts = [a.get("name", a["key"]) for a in self.launcher.apps if a.get("section") != "vercel"]
+            msg = ""
+            if vercel:
+                msg += "Your Vercel projects: " + ", ".join(vercel) + ". "
+            msg += f"Plus {len(arts)} Claude artifacts, such as " + ", ".join(arts[:6]) + "."
+            self._speak(msg)
             return False
 
         if TIME_RE.search(text) and len(text.split()) <= 7:
