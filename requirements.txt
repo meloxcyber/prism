@@ -1,8 +1,8 @@
 sounddevice>=0.4.6
 numpy>=1.24
-SpeechRecognition>=3.10
+SpeechRecognition>=3.11  # 3.11+ works on Python 3.13 (audioop-lts)
 edge-tts>=6.1
-pygame>=2.5
+# pygame is no longer needed on Windows (native playback)
 pyttsx3>=2.90
 rich>=13.0
 # Optional: fully offline speech-to-text. Then set listen.stt_engine = "whisper" in config.json.

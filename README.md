@@ -30,6 +30,19 @@ Python packages go in `%LOCALAPPDATA%\PRISM\venv`, not in the repo/OneDrive fold
 - **App list**: on start-up the assistant fetches `apps.json` from the hosted console (`sync.apps_url` in config), so apps added via GitHub reach every PC without touching files.
 - **Your local settings never get overwritten**: `config.json` and `apps.local.json` are git-ignored. Copy `config.local.example.json` / `apps.local.example.json` to start them.
 
+## The HUD
+
+When PRISM starts it opens a JARVIS-style HUD in a chromeless Edge window (`http://127.0.0.1:7777`):
+
+- **Arc reactor** in the centre that changes with Prism's state: dim cyan *standing by*, bright cyan *listening*, amber *processing*, white *speaking*. The ring reacts to your voice live.
+- **Systems**: brain (Claude Code), mic, voice, wake detector, hearing, weather. A green or red dot for each.
+- **Acoustic sensor**: live mic scope with the clap threshold line. Every clap flashes **CLAP**; a double clap wakes Prism. Use it to tune `wake.clap_threshold`.
+- **Comms log**: everything said, both ways.
+- **Command line + buttons**: type a command, **Wake**, **Test voice**, **Weather**.
+- **Launch bar**: Vercel projects and Claude artifacts, one click each.
+
+Close the window any time; reopen it at `http://127.0.0.1:7777`. `hud.open_on_start: false` stops it opening automatically, and `PRISM.bat --no-hud` turns it off.
+
 ## Run
 
 Double-click `PRISM.bat`. Clap twice to wake it. Press **Enter** in the console to wake it without clapping, or type a command and press Enter to test without the microphone.
@@ -93,5 +106,5 @@ vercel.json, package.json
 - **Claps not detected** → `--calibrate`; make sure the right mic is default (`--devices`); try `clap_threshold: 0.15`.
 - **Wakes on its own** → raise `clap_threshold`; keep the mic away from speakers.
 - **"My brain isn't signed in"** → open a terminal, run `claude`, complete login.
-- **No voice** → `--say test`; check internet (neural voice) or Windows speech voices (offline fallback).
+- **No voice** → press **Test voice** on the HUD and check the Voice row in Systems. The neural voice needs internet; offline it falls back to Windows' built-in voices. Playback uses Windows' own audio player, so there's no pygame to install.
 - **Speech not recognised** → the Google recogniser needs internet; or switch to whisper (offline).

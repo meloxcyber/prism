@@ -118,6 +118,12 @@ DEFAULT_CONFIG: dict = {
         "timeout_s": 90,
         "history_turns": 8,
     },
+    "hud": {
+        "enabled": True,
+        "port": 7777,
+        "open_on_start": True,
+        "app_window": True,  # chromeless Edge/Chrome window
+    },
     "sync": {
         # Hosted copy of apps.json (the Vercel console). Fetched at start-up so new apps
         # added through GitHub reach this PC without touching any local files.
@@ -194,6 +200,12 @@ class Mic:
 
         self._sd = sd
         self.q: "queue.Queue[np.ndarray]" = queue.Queue()
+        self.level = 0.0  # live peak (0..1) for the HUD meter
+        try:
+            idx = device if device is not None else sd.default.device[0]
+            self.name = str(sd.query_devices(idx)["name"])
+        except Exception:
+            self.name = "default microphone"
         self.stream = sd.InputStream(
             samplerate=SAMPLE_RATE,
             channels=1,
@@ -204,7 +216,9 @@ class Mic:
         )
 
     def _cb(self, indata, frames, t, status):  # noqa: D401
-        self.q.put(indata[:, 0].copy())
+        block = indata[:, 0].copy()
+        self.level = float(np.abs(block).max()) / 32768.0 if block.size else 0.0
+        self.q.put(block)
 
     def start(self):
         self.stream.start()
@@ -255,6 +269,8 @@ class ClapDetector:
         self.onsets: deque[float] = deque(maxlen=4)
         self.refractory_until = 0.0
         self.pending = None  # (t0, rms0, blocks_seen, loud_blocks)
+        self.clap_count = 0  # every confirmed single clap (shown on the HUD)
+        self.last_clap = 0.0
 
     def reset(self):
         self.last_peak = 0.0
@@ -296,6 +312,8 @@ class ClapDetector:
         return False
 
     def _register(self, t: float) -> bool:
+        self.clap_count += 1
+        self.last_clap = time.time()
         if self.onsets:
             gap = t - self.onsets[-1]
             if self.min_gap <= gap <= self.max_gap:
@@ -308,7 +326,8 @@ class ClapDetector:
 # --------------------------------------------------------------------------- #
 # Speech capture + transcription
 # --------------------------------------------------------------------------- #
-def record_utterance(mic: Mic, cfg: dict, noise_rms: float) -> np.ndarray | None:
+def record_utterance(mic: Mic, cfg: dict, noise_rms: float, should_abort=None) -> np.ndarray | None:
+    """Capture one spoken phrase. Returns None on silence, timeout, or if should_abort() fires."""
     speech_thresh = max(0.012, noise_rms * 4.0)
     frames: list[np.ndarray] = []
     started = False
@@ -317,7 +336,9 @@ def record_utterance(mic: Mic, cfg: dict, noise_rms: float) -> np.ndarray | None
     last_voice = t_start
 
     while True:
-        b = mic.read(1.0)
+        if should_abort is not None and not started and should_abort():
+            return None
+        b = mic.read(0.25)
         if b is None:
             continue
         now = time.monotonic()
@@ -378,26 +399,41 @@ class Transcriber:
 # Voice (calm British)
 # --------------------------------------------------------------------------- #
 class Voice:
+    """Calm British voice. Neural (edge-tts) when online, Windows SAPI offline.
+
+    MP3 playback on Windows goes through the built-in winmm/MCI player, so there is
+    no pygame/SDL dependency to break on newer Python versions.
+    """
+
     def __init__(self, cfg: dict):
         self.cfg = cfg
-        self._mixer_ready = False
+        self._lock = threading.Lock()
+        self.last_engine = ""
+        self.last_error = ""
 
     def say(self, text: str) -> None:
         text = (text or "").strip()
         if not text:
             return
         log(f"[bold cyan]PRISM:[/bold cyan] {text}")
-        if self.cfg.get("engine", "edge") == "edge":
+        with self._lock:
+            if self.cfg.get("engine", "edge") == "edge":
+                try:
+                    self._edge(text)
+                    self.last_engine, self.last_error = "neural", ""
+                    return
+                except Exception as e:
+                    self.last_error = str(e)[:160]
+                    log(f"[yellow]Neural voice unavailable ({e}); using offline voice.[/yellow]")
             try:
-                self._edge(text)
-                return
+                self._sapi(text)
+                self.last_engine = "offline"
             except Exception as e:
-                log(f"[yellow]Neural voice unavailable ({e}); using offline voice.[/yellow]")
-        self._sapi(text)
+                self.last_engine, self.last_error = "none", str(e)[:160]
+                log(f"[red]No voice output:[/red] {e}")
 
     def _edge(self, text: str) -> None:
         import edge_tts
-        import pygame
 
         fd, path = tempfile.mkstemp(suffix=".mp3", prefix="prism_")
         os.close(fd)
@@ -410,26 +446,20 @@ class Voice:
                 pitch=self.cfg.get("pitch", "-2Hz"),
             ).save(path)
 
-        asyncio.run(gen())
-        if not self._mixer_ready:
-            pygame.mixer.init()
-            self._mixer_ready = True
-        pygame.mixer.music.load(path)
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
-            time.sleep(0.05)
-        pygame.mixer.music.unload()
         try:
-            os.remove(path)
-        except OSError:
-            pass
+            asyncio.run(gen())
+            if os.path.getsize(path) < 200:
+                raise RuntimeError("empty audio from voice service")
+            play_mp3(path)
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     def _sapi(self, text: str) -> None:
-        try:
-            import pyttsx3
-        except Exception:
-            print(f"(voice unavailable) {text}")
-            return
+        import pyttsx3
+
         engine = pyttsx3.init()
         want = self.cfg.get("fallback_sapi_voice", "Hazel").lower()
         for v in engine.getProperty("voices"):
@@ -441,6 +471,35 @@ class Voice:
         engine.setProperty("rate", 165)
         engine.say(text)
         engine.runAndWait()
+
+
+def play_mp3(path: str) -> None:
+    if IS_WINDOWS:
+        import ctypes
+
+        mci = ctypes.windll.winmm.mciSendStringW  # type: ignore[attr-defined]
+        buf = ctypes.create_unicode_buffer(256)
+        alias = f"prism{int(time.time() * 1000) % 10_000_000}"
+        err = mci(f'open "{path}" type mpegvideo alias {alias}', buf, 255, 0)
+        if err:
+            raise RuntimeError(f"Windows audio player error {err}")
+        try:
+            mci(f"play {alias} wait", buf, 255, 0)
+        finally:
+            mci(f"close {alias}", buf, 255, 0)
+        return
+    # macOS / Linux
+    for player in (["afplay"], ["mpg123", "-q"], ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"]):
+        if shutil.which(player[0]):
+            subprocess.run(player + [path], check=False)
+            return
+    import pygame  # last resort
+
+    pygame.mixer.init()
+    pygame.mixer.music.load(path)
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        time.sleep(0.05)
 
 
 # --------------------------------------------------------------------------- #
@@ -757,6 +816,8 @@ LIST_RE = re.compile(r"\b(what (?:apps |pages )?can you open|list (?:my |the )?a
 
 
 class Prism:
+    STATES = ("booting", "sleeping", "listening", "thinking", "speaking")
+
     def __init__(self, cfg: dict, use_mic: bool = True):
         self.cfg = cfg
         self.name = cfg.get("assistant_name", "Prism")
@@ -767,11 +828,76 @@ class Prism:
         self.brain = Brain(cfg["brain"], self.launcher, self.weather, self.address)
         self.transcriber = Transcriber(cfg["listen"])
         self.detector = ClapDetector(cfg["wake"])
-        self.mic = Mic(cfg["listen"].get("input_device")) if use_mic else None
+        self.mic: Mic | None = None
+        self.mic_error = ""
+        if use_mic:
+            try:
+                self.mic = Mic(cfg["listen"].get("input_device"))
+            except Exception as e:
+                self.mic_error = str(e)[:160]
+                log(f"[red]Microphone unavailable:[/red] {e}. Running keyboard/HUD-only.")
         self.last_interaction = 0.0
         self.wake_event = threading.Event()
         self.typed: "queue.Queue[str]" = queue.Queue()
-        self.last_wake_at = 0.0
+        self.state = "booting"
+        self.status_line = ""
+        self.wake_count = 0
+        self.started = time.time()
+        self.ignore_mic_until = 0.0
+        self.transcript: deque[dict] = deque(maxlen=60)
+        self.hud_url = ""
+
+    # ---- HUD plumbing -----------------------------------------------------
+    def set_state(self, state: str, line: str = ""):
+        self.state = state
+        self.status_line = line
+
+    def add_line(self, who: str, text: str):
+        self.transcript.append({"who": who, "text": text, "t": time.time()})
+
+    def submit(self, text: str):
+        """Typed command from the HUD or console. Empty text = just wake."""
+        text = (text or "").strip()
+        if text:
+            self.typed.put(text)
+        self.wake_event.set()
+
+    def snapshot(self) -> dict:
+        w = self.weather
+        return {
+            "name": self.name,
+            "address": self.address,
+            "state": self.state,
+            "line": self.status_line,
+            "level": round(self.mic.level, 4) if self.mic else 0.0,
+            "threshold": self.detector.thresh,
+            "noise": round(self.detector.noise, 5),
+            "claps": self.detector.clap_count,
+            "last_clap": self.detector.last_clap,
+            "wakes": self.wake_count,
+            "uptime": int(time.time() - self.started),
+            "transcript": list(self.transcript),
+            "weather": {"short": w.short(), "city": w.city, "summary": w.summary() if w.data else ""},
+            "systems": {
+                "brain": {"ok": bool(self.brain.exe), "detail": self.brain.exe or "Claude Code CLI not found"},
+                "mic": {"ok": self.mic is not None, "detail": self.mic.name if self.mic else (self.mic_error or "disabled")},
+                "voice": {
+                    "ok": self.voice.last_engine != "none",
+                    "detail": f'{self.cfg["voice"].get("edge_voice")} · {self.voice.last_engine or "ready"}'
+                    + (f" · {self.voice.last_error}" if self.voice.last_error else ""),
+                },
+                "weather": {"ok": w.data is not None, "detail": w.city or "locating"},
+                "wake": {"ok": self.mic is not None, "detail": f'double clap · threshold {self.detector.thresh}'},
+                "stt": {"ok": True, "detail": self.cfg["listen"].get("stt_engine", "google")},
+            },
+            "apps": [
+                {"key": a["key"], "name": a.get("name", a["key"]), "section": a.get("section", "other"), "url": a.get("url", "")}
+                for a in self.launcher.apps
+            ],
+        }
+
+    def test_voice(self):
+        self._speak(f"All systems operational, {self.address}. Voice link confirmed.")
 
     # ---- helpers ----------------------------------------------------------
     def greeting(self) -> str:
@@ -786,23 +912,30 @@ class Prism:
         while True:
             try:
                 line = input()
-            except (EOFError, KeyboardInterrupt):
+            except (EOFError, KeyboardInterrupt, RuntimeError):
                 return
-            line = line.strip()
-            if line:
-                self.typed.put(line)
-            self.wake_event.set()
+            self.submit(line)
 
     def _speak(self, text: str):
-        self.voice.say(text)
-        if self.mic:
-            self.mic.flush()
-        self.detector.reset()
+        prev = self.state
+        self.set_state("speaking", text)
+        self.add_line("prism", text)
+        self.ignore_mic_until = float("inf")  # never hear our own voice as a clap
+        try:
+            self.voice.say(text)
+        finally:
+            self.ignore_mic_until = time.monotonic() + 0.6
+            if self.mic:
+                self.mic.flush()
+            self.detector.reset()
+            if self.state == "speaking":
+                self.set_state(prev if prev != "speaking" else "sleeping")
 
     # ---- command handling -------------------------------------------------
     def handle(self, text: str) -> bool:
         """Returns True if the assistant should go back to sleep."""
         log(f"[bold]You:[/bold] {text}")
+        self.add_line("you", text)
         self.last_interaction = time.time()
 
         if SLEEP_RE.search(text):
@@ -832,24 +965,25 @@ class Prism:
         if m:
             app, score = self.launcher.match(m.group(1))
             if app and score >= 0.6:
-                self._speak(f"Opening {app.get('name', app['key'])}.")
                 self.launcher.open(app)
+                self._speak(f"Opening {app.get('name', app['key'])}.")
                 self.brain.history.append((text, f"Opening {app.get('name')}."))
                 return False
 
+        self.set_state("thinking", text)
         reply = self.brain.ask(text)
-        opened = []
         for key in reply.get("open", []):
             app = self.launcher.by_key(key)
             if app:
                 self.launcher.open(app)
-                opened.append(app.get("name", key))
         self._speak(reply["say"])
         return bool(reply.get("sleep"))
 
     # ---- main loop --------------------------------------------------------
     def run(self):
-        log(f"[bold magenta]{self.name} online.[/bold magenta]  Clap twice to wake — or press Enter. Type a command + Enter to test without the mic.")
+        log(f"[bold magenta]{self.name} online.[/bold magenta]  Clap twice to wake — or press Enter / use the HUD.")
+        if self.hud_url:
+            log(f"[cyan]HUD:[/cyan] {self.hud_url}")
         if self.brain.exe:
             log(f"[dim]brain: {self.brain.exe}[/dim]")
         else:
@@ -857,7 +991,7 @@ class Prism:
         threading.Thread(target=self._keyboard_thread, daemon=True).start()
         if self.mic:
             self.mic.start()
-            log(f"[dim]mic open @ {SAMPLE_RATE} Hz, clap threshold {self.detector.thresh}[/dim]")
+            log(f"[dim]mic: {self.mic.name} @ {SAMPLE_RATE} Hz, clap threshold {self.detector.thresh}[/dim]")
         self._speak(f"{self.name} online.")
 
         try:
@@ -872,6 +1006,7 @@ class Prism:
             log("[dim]PRISM stopped.[/dim]")
 
     def _sleep_until_wake(self):
+        self.set_state("sleeping", "Clap twice to wake")
         log("[dim]…sleeping (clap twice)[/dim]")
         self.wake_event.clear()
         self.detector.reset()
@@ -879,75 +1014,79 @@ class Prism:
         while True:
             if self.wake_event.is_set():
                 self.wake_event.clear()
+                self.wake_count += 1
                 return
             if not self.mic:
                 time.sleep(0.1)
                 continue
-            b = self.mic.read(0.5)
+            b = self.mic.read(0.25)
             if b is None:
                 continue
-            if time.monotonic() < cooldown_until:
+            now = time.monotonic()
+            if now < cooldown_until or now < self.ignore_mic_until:
                 continue
             if self.detector.feed(b):
                 log("[bold green]👏👏  double clap[/bold green]")
+                self.wake_count += 1
                 return
+
+    def _take_typed(self) -> str | None:
+        try:
+            return self.typed.get_nowait()
+        except queue.Empty:
+            return None
 
     def _conversation(self):
         if self.mic:
             self.mic.flush()
-        self.last_wake_at = time.time()
-        first = True
+        typed = self._take_typed()
+        if not typed:
+            self._speak(self.greeting())
         while True:
+            text = typed or self._take_typed()
             typed = None
-            try:
-                typed = self.typed.get_nowait()
-            except queue.Empty:
-                pass
-
-            if first:
-                if not typed:
-                    self._speak(self.greeting())
-                first = False
-
-            if typed:
-                text = typed
-            else:
+            if not text:
                 if not self.mic:
-                    # text-only mode: wait for the next typed line
+                    self.set_state("listening", "Awaiting typed command")
                     text = self.typed.get()
                 else:
                     text = self._listen_once()
                     if text is None:
                         return
-
             if self.handle(text):
                 return
+            if self.mic and self._await_followup():
+                return
 
-            # follow-up window: keep listening briefly; silence -> back to sleep
-            if self.mic:
-                if self._await_followup():
-                    return
+    def _listen(self, cfg: dict) -> str | None:
+        """Listen for one phrase; a typed HUD command interrupts and wins."""
+        self.set_state("listening", "Listening…")
+        self.mic.flush()
+        audio = record_utterance(self.mic, cfg, self.detector.noise, should_abort=lambda: not self.typed.empty())
+        typed = self._take_typed()
+        if typed:
+            return typed
+        if audio is None:
+            return None
+        self.set_state("thinking", "Transcribing…")
+        text = self.transcriber.transcribe(audio)
+        if not text:
+            return ""
+        return text
 
     def _listen_once(self) -> str | None:
         log("[cyan]listening…[/cyan]")
-        self.mic.flush()
-        audio = record_utterance(self.mic, self.cfg["listen"], self.detector.noise)
-        if audio is None:
-            self._speak("Standing by.")
-            return None
-        text = self.transcriber.transcribe(audio)
-        if not text:
-            self._speak("Sorry, I didn't catch that.")
-            return self._listen_once_retry()
-        return text
-
-    def _listen_once_retry(self) -> str | None:
-        self.mic.flush()
-        audio = record_utterance(self.mic, self.cfg["listen"], self.detector.noise)
-        if audio is None:
-            self._speak("Standing by.")
-            return None
-        return self.transcriber.transcribe(audio) or None
+        for attempt in range(2):
+            text = self._listen(self.cfg["listen"])
+            if text is None:
+                self._speak("Standing by.")
+                return None
+            if text:
+                return text
+            if attempt == 0:
+                self._speak("Sorry, I didn't catch that.")
+        self._speak("Standing by.")
+        return None
 
     def _await_followup(self) -> bool:
         """After answering, keep listening briefly. Returns True when it's time to sleep."""
@@ -957,22 +1096,99 @@ class Prism:
         cfg = dict(self.cfg["listen"])
         cfg["no_speech_timeout_s"] = window
         log(f"[dim]follow-up window ({int(window)} s)…[/dim]")
-        self.mic.flush()
         while True:
-            try:
-                typed = self.typed.get_nowait()
-                return self.handle(typed)
-            except queue.Empty:
-                pass
-            audio = record_utterance(self.mic, cfg, self.detector.noise)
-            if audio is None:
+            text = self._listen(cfg)
+            if text is None:
                 return True  # silence -> sleep quietly
-            text = self.transcriber.transcribe(audio)
             if not text:
                 continue
             if self.handle(text):
                 return True
-            self.mic.flush()
+
+
+# --------------------------------------------------------------------------- #
+# HUD — local JARVIS-style interface (http://127.0.0.1:7777)
+# --------------------------------------------------------------------------- #
+HUD_DIR = HERE / "hud"
+
+
+def start_hud(prism: Prism, cfg: dict) -> str:
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):  # keep the console clean
+            pass
+
+        def _send(self, code: int, body, ctype: str = "application/json"):
+            data = body if isinstance(body, bytes) else str(body).encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            try:
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def do_GET(self):
+            path = self.path.split("?")[0]
+            if path in ("/", "/index.html"):
+                return self._send(200, (HUD_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
+            if path == "/state":
+                return self._send(200, json.dumps(prism.snapshot()))
+            return self._send(404, '{"error":"not found"}')
+
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                data = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            except json.JSONDecodeError:
+                data = {}
+            path = self.path.split("?")[0]
+            if path == "/cmd":
+                prism.submit(str(data.get("text", "")))
+            elif path == "/wake":
+                prism.submit("")
+            elif path == "/test-voice":
+                threading.Thread(target=prism.test_voice, daemon=True).start()
+            elif path == "/open":
+                app = prism.launcher.by_key(str(data.get("key", "")))
+                if app:
+                    prism.launcher.open(app)
+            else:
+                return self._send(404, '{"error":"not found"}')
+            return self._send(200, '{"ok":true}')
+
+    port = int(cfg.get("port", 7777))
+    for p in range(port, port + 10):
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", p), Handler)
+            break
+        except OSError:
+            continue
+    else:
+        raise RuntimeError("no free port for the HUD")
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{server.server_address[1]}/"
+
+
+def open_hud_window(url: str, app_window: bool = True) -> None:
+    if IS_WINDOWS and app_window:
+        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local = os.environ.get("LOCALAPPDATA", "")
+        for exe in (
+            rf"{pf86}\Microsoft\Edge\Application\msedge.exe",
+            rf"{pf}\Microsoft\Edge\Application\msedge.exe",
+            rf"{pf}\Google\Chrome\Application\chrome.exe",
+            rf"{local}\Google\Chrome\Application\chrome.exe",
+        ):
+            if exe and os.path.exists(exe):
+                subprocess.Popen([exe, f"--app={url}", "--window-size=1360,860"])
+                return
+    webbrowser.open(url)
 
 
 # --------------------------------------------------------------------------- #
@@ -990,7 +1206,7 @@ def calibrate(cfg: dict, seconds: int = 20):
     mic = Mic(cfg["listen"].get("input_device"))
     det = ClapDetector(cfg["wake"])
     mic.start()
-    print(f"Calibration: speak normally, then clap twice. Current threshold = {det.thresh}")
+    print(f"Calibration on '{mic.name}': speak normally, then clap twice. Current threshold = {det.thresh}")
     print("Peaks shown as a bar; claps should land well above the threshold line.\n")
     t_end = time.monotonic() + seconds
     max_quiet = 0.0
@@ -1021,6 +1237,7 @@ def main():
     ap.add_argument("--devices", action="store_true", help="list audio input devices")
     ap.add_argument("--say", metavar="TEXT", help="test the voice and exit")
     ap.add_argument("--text", action="store_true", help="keyboard-only mode (no microphone)")
+    ap.add_argument("--no-hud", action="store_true", help="don't start or open the HUD")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -1031,7 +1248,16 @@ def main():
     if args.calibrate:
         return calibrate(cfg)
 
-    Prism(cfg, use_mic=not args.text).run()
+    prism = Prism(cfg, use_mic=not args.text)
+    hud_cfg = cfg.get("hud", {})
+    if not args.no_hud and hud_cfg.get("enabled", True):
+        try:
+            prism.hud_url = start_hud(prism, hud_cfg)
+            if hud_cfg.get("open_on_start", True):
+                open_hud_window(prism.hud_url, hud_cfg.get("app_window", True))
+        except Exception as e:
+            log(f"[yellow]HUD unavailable:[/yellow] {e}")
+    prism.run()
 
 
 if __name__ == "__main__":

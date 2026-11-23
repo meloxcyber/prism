@@ -3,226 +3,312 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PRISM Console</title>
-<meta name="description" content="PRISM — launcher grid, voice cheat-sheet and the live app registry for the desktop assistant.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,8 94,88 6,88' fill='none' stroke='%23e8e8f0' stroke-width='8'/><line x1='6' y1='60' x2='50' y2='60' stroke='%23ff5c7a' stroke-width='6'/><line x1='50' y1='60' x2='94' y2='40' stroke='%2358a6ff' stroke-width='6'/></svg>">
+<title>PRISM · Console</title>
+<meta name="description" content="PRISM console — app launcher, diagnostics and the live app registry for the desktop assistant.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%2337e4ff' stroke-width='8'/><circle cx='50' cy='50' r='16' fill='%2337e4ff'/></svg>">
 <style>
-  :root{
-    --bg:#0b0b10; --panel:#13131b; --panel-2:#191925; --line:#262636; --text:#e8e8f0; --muted:#8e8ea3;
-    --accent:#58a6ff; --ok:#3fd68b; --warn:#f5b547;
-    --spectrum:linear-gradient(90deg,#ff5c7a,#ffb347,#f9f871,#3fd68b,#58a6ff,#b388ff);
-    --radius:14px; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-    --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
-  body::before{content:"";position:fixed;inset:0 0 auto 0;height:3px;background:var(--spectrum);z-index:10}
-  a{color:var(--accent);text-decoration:none}
-  .wrap{max-width:1180px;margin:0 auto;padding:40px 22px 80px}
-  header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:28px}
-  .brand{display:flex;align-items:center;gap:14px}
-  .brand svg{width:44px;height:44px}
-  h1{margin:0;font-size:30px;letter-spacing:.18em;font-weight:700}
-  .tag{color:var(--muted);font-size:13px;margin-top:4px}
-  .status{display:flex;gap:10px;flex-wrap:wrap}
-  .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 12px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
-  .pill b{color:var(--text);font-weight:600}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
-  .search{position:relative;margin:8px 0 22px}
-  .search input{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:var(--radius);padding:16px 18px 16px 48px;font-size:16px;outline:none;transition:border-color .15s}
-  .search input:focus{border-color:var(--accent)}
-  .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);width:20px;height:20px;color:var(--muted)}
-  .search kbd{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:2px 7px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 16px 14px;display:flex;flex-direction:column;gap:10px;transition:transform .12s,border-color .12s;position:relative;overflow:hidden}
-  .card::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--spectrum);opacity:0;transition:opacity .15s}
-  .card:hover{transform:translateY(-2px);border-color:#34344a}
-  .card:hover::after{opacity:1}
-  .card h3{margin:0;font-size:16px;font-weight:600;line-height:1.3}
-  .card .note{color:var(--muted);font-size:13px;line-height:1.45;min-height:2.6em}
-  .say{display:flex;flex-wrap:wrap;gap:6px}
-  .say span{font-size:11.5px;color:var(--muted);border:1px dashed var(--line);border-radius:7px;padding:3px 7px;font-family:var(--mono)}
-  .say span::before{content:"“";opacity:.5}.say span::after{content:"”";opacity:.5}
-  .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
-  .key{font-family:var(--mono);font-size:11px;color:var(--muted)}
-  .btn{display:inline-flex;align-items:center;gap:6px;background:var(--text);color:#0b0b10;border:0;border-radius:9px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer}
-  .btn:hover{background:#fff}
-  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);cursor:default}
-  section{margin-top:56px}
-  h2{font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0 0 16px;font-weight:600}
-  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
-  .panel h4{margin:0 0 10px;font-size:15px}
-  .panel p,.panel li{color:var(--muted);font-size:14px;line-height:1.55}
-  .panel ol,.panel ul{padding-left:18px;margin:8px 0}
-  .panel code{font-family:var(--mono);font-size:12.5px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--text)}
-  table{width:100%;border-collapse:collapse;font-size:14px}
-  td{padding:9px 0;border-top:1px solid var(--line);vertical-align:top;color:var(--muted)}
-  td:first-child{color:var(--text);font-family:var(--mono);font-size:13px;width:52%;padding-right:12px}
-  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:13.5px}
-  .flow .node{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
-  .flow .node small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
-  .flow .arrow{color:var(--muted)}
-  .empty{color:var(--muted);padding:40px;text-align:center;grid-column:1/-1}
-  .group{margin-top:34px}
-  .group:first-child{margin-top:0}
-  .group-head{display:flex;align-items:baseline;gap:12px;margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
-  .group-head h2{margin:0}
-  .group-head .n{font-family:var(--mono);font-size:12px;color:var(--muted)}
-  .group-head .sub{color:var(--muted);font-size:13px;margin-left:auto}
-  .badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;border-radius:6px;padding:2px 7px}
-  .badge.vercel{background:#1b1b22;color:#fff;border:1px solid #3a3a48}
-  .badge.artifact{background:#1a1626;color:#c9b3ff;border:1px solid #3b2f5e}
-  .card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-  footer{margin-top:60px;color:var(--muted);font-size:12.5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-family:var(--mono)}
-  @media (max-width:600px){h1{font-size:24px}.wrap{padding:28px 14px 60px}}
+:root{
+  --bg:#02070d; --ink:#bdefff; --hi:#e9fbff; --dim:#5d8ea3; --faint:#173547; --line:rgba(55,228,255,.22);
+  --c:#37e4ff; --glow:rgba(55,228,255,.55); --amber:#ffb547; --green:#46f0a6; --red:#ff4d6a;
+  --mono:"Cascadia Mono","Consolas","SFMono-Regular",ui-monospace,monospace;
+  --sans:"Segoe UI","Bahnschrift",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+body{background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(20,90,120,.35),transparent 70%),var(--bg);min-height:100vh}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.08;z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M28 0 56 16v32L28 64 0 48V16zM28 64v33M0 16-28 0M56 16 84 0' fill='none' stroke='%2337e4ff' stroke-width='.7'/%3E%3C/svg%3E");}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.022) 0 1px,transparent 1px 3px)}
+a{color:var(--c);text-decoration:none}
+.wrap{position:relative;z-index:1;max-width:1220px;margin:0 auto;padding:28px 22px 70px}
+
+/* header */
+header{display:grid;grid-template-columns:auto 1fr auto;gap:28px;align-items:center;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.mini{width:110px;height:110px;position:relative}
+.mini svg{position:absolute;inset:0;width:100%;height:100%}
+.spin{transform-origin:50% 50%;animation:spin var(--spd,30s) linear infinite}.rev{animation-direction:reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+.mini .core{position:absolute;left:50%;top:50%;width:30%;height:30%;transform:translate(-50%,-50%);border-radius:50%;
+  background:radial-gradient(circle at 50% 45%,#fff 0 10%,var(--c) 30%,rgba(55,228,255,.2) 60%,transparent 72%);box-shadow:0 0 40px 8px var(--glow);animation:breathe 3.2s ease-in-out infinite}
+@keyframes breathe{50%{transform:translate(-50%,-50%) scale(1.12)}}
+h1{margin:0;font:300 40px/1 var(--sans);letter-spacing:.55em;color:var(--hi);text-shadow:0 0 22px var(--glow)}
+.sub{margin-top:10px;font:11.5px/1.4 var(--mono);letter-spacing:.24em;color:var(--dim);text-transform:uppercase}
+.stats{display:flex;gap:26px;font-family:var(--mono);text-align:right}
+.stats b{display:block;font:300 26px/1 var(--sans);color:var(--hi)}
+.stats span{font-size:10px;letter-spacing:.25em;color:var(--dim);text-transform:uppercase}
+
+/* search */
+.search{display:flex;align-items:center;gap:12px;margin:24px 0 8px;border:1px solid var(--line);background:rgba(0,0,0,.35);padding:0 16px;height:52px}
+.search span{font:15px var(--mono);color:var(--c)}
+.search input{flex:1;background:none;border:0;outline:0;color:var(--hi);font:15px var(--mono)}
+.search input::placeholder{color:var(--dim)}
+.search kbd{font:11px var(--mono);color:var(--dim);border:1px solid var(--faint);padding:2px 7px}
+
+/* sections */
+.group{margin-top:34px}
+.ghead{display:flex;align-items:baseline;gap:14px;margin-bottom:14px}
+.ghead h2{margin:0;font:600 12px var(--mono);letter-spacing:.38em;color:var(--c);text-transform:uppercase;text-shadow:0 0 10px var(--glow)}
+.ghead .n{font:12px var(--mono);color:var(--dim)}
+.ghead .rule{flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+.ghead .gs{font-size:12.5px;color:var(--dim)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:14px}
+.card{position:relative;border:1px solid var(--line);background:linear-gradient(180deg,rgba(8,30,44,.6),rgba(3,12,20,.6));padding:16px 16px 14px;
+  display:flex;flex-direction:column;gap:9px;clip-path:polygon(0 10px,10px 0,100% 0,100% calc(100% - 18px),calc(100% - 18px) 100%,0 100%);transition:all .15s}
+.card::before{content:"";position:absolute;left:0;top:0;width:44px;height:2px;background:var(--c);box-shadow:0 0 10px var(--glow);transition:width .25s}
+.card:hover{border-color:rgba(55,228,255,.55);box-shadow:inset 0 0 30px rgba(55,228,255,.07)}
+.card:hover::before{width:100%}
+.card.vercel{border-color:rgba(233,251,255,.32)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.card h3{margin:0;font:500 16px/1.3 var(--sans);color:var(--hi)}
+.badge{font:10px var(--mono);letter-spacing:.18em;padding:3px 7px;text-transform:uppercase;border:1px solid}
+.badge.vercel{color:#fff;border-color:rgba(255,255,255,.4)}
+.badge.artifact{color:#9fdcff;border-color:var(--faint)}
+.note{color:var(--dim);font-size:13px;line-height:1.45;min-height:2.6em}
+.host{font:11px var(--mono);color:var(--dim);opacity:.8}
+.say{display:flex;flex-wrap:wrap;gap:6px}
+.say span{font:11px var(--mono);color:var(--ink);opacity:.75;border:1px dashed var(--faint);padding:3px 7px}
+.say span::before{content:"“"}.say span::after{content:"”"}
+.row{display:flex;justify-content:space-between;align-items:center;margin-top:auto}
+.key{font:11px var(--mono);color:var(--dim)}
+.btn{background:transparent;border:1px solid var(--c);color:var(--c);font:600 11px var(--mono);letter-spacing:.24em;padding:8px 13px;cursor:pointer;text-transform:uppercase;
+  clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px);transition:all .12s;display:inline-block}
+.btn:hover{background:var(--c);color:#02070d;box-shadow:0 0 16px var(--glow)}
+.btn.ghost{border-color:var(--faint);color:var(--dim);cursor:default}
+.btn.ghost:hover{background:none;color:var(--dim);box-shadow:none}
+.empty{color:var(--dim);font:13px var(--mono);padding:30px 0}
+
+/* panels */
+.panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.panel{position:relative;border:1px solid var(--line);background:linear-gradient(180deg,rgba(8,30,44,.6),rgba(3,12,20,.6));padding:18px 20px;
+  clip-path:polygon(0 12px,12px 0,100% 0,100% calc(100% - 22px),calc(100% - 22px) 100%,0 100%)}
+.panel::before{content:"";position:absolute;left:0;top:0;width:60px;height:2px;background:var(--c);box-shadow:0 0 10px var(--glow)}
+.pt{font:600 11px var(--mono);letter-spacing:.32em;color:var(--c);text-transform:uppercase;margin-bottom:12px;display:flex;justify-content:space-between}
+.pt small{color:var(--dim);letter-spacing:.1em;font-weight:400}
+.panel p,.panel li{color:var(--dim);font-size:13.5px;line-height:1.6}
+.panel ul,.panel ol{margin:6px 0;padding-left:18px}
+.panel code{font:12px var(--mono);color:var(--hi);background:rgba(0,0,0,.35);border:1px solid var(--faint);padding:1px 6px}
+table{width:100%;border-collapse:collapse}
+td{padding:8px 0;border-top:1px dashed rgba(55,228,255,.12);vertical-align:top;font-size:13px;color:var(--dim)}
+td:first-child{font:12.5px var(--mono);color:var(--hi);width:48%;padding-right:12px}
+
+/* diagnostics */
+#scope{width:100%;height:110px;display:block;background:rgba(55,228,255,.06);margin:6px 0 10px}
+.diagrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.flag{font:11px var(--mono);letter-spacing:.25em;padding:5px 10px;border:1px solid var(--faint);color:var(--dim);transition:all .15s}
+.flag.on{background:var(--c);color:#02070d;border-color:var(--c);box-shadow:0 0 18px var(--glow)}
+.flag.wake.on{background:var(--green);border-color:var(--green);box-shadow:0 0 22px var(--green)}
+.readout{font:12px var(--mono);color:var(--dim);letter-spacing:.08em}
+.readout b{color:var(--hi)}
+input[type=range]{accent-color:var(--c);width:140px}
+
+footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font:11.5px var(--mono);color:var(--dim);letter-spacing:.06em}
+@media (max-width:720px){header{grid-template-columns:auto 1fr}.stats{grid-column:1/-1;justify-content:flex-start;text-align:left}h1{font-size:30px}.mini{width:80px;height:80px}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div class="brand">
-      <svg viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,8 94,88 6,88" fill="none" stroke="#e8e8f0" stroke-width="6"/><line x1="4" y1="62" x2="50" y2="62" stroke="#e8e8f0" stroke-width="4"/><line x1="50" y1="62" x2="98" y2="46" stroke="#ff5c7a" stroke-width="4"/><line x1="50" y1="62" x2="98" y2="56" stroke="#3fd68b" stroke-width="4"/><line x1="50" y1="62" x2="98" y2="66" stroke="#58a6ff" stroke-width="4"/></svg>
-      <div><h1>PRISM</h1><div class="tag">Console · launcher grid · live app registry for the desktop assistant</div></div>
+    <div class="mini" aria-hidden="true">
+      <svg viewBox="0 0 100 100">
+        <g class="spin" style="--spd:40s"><circle cx="50" cy="50" r="47" fill="none" stroke="#37e4ff" stroke-opacity=".4" stroke-dasharray="1.5 4"/></g>
+        <g class="spin rev" style="--spd:18s"><circle cx="50" cy="50" r="41" fill="none" stroke="#37e4ff" stroke-width="2" stroke-dasharray="26 8 4 8"/></g>
+        <g class="spin" style="--spd:9s"><circle cx="50" cy="50" r="31" fill="none" stroke="#37e4ff" stroke-opacity=".7" stroke-width="4" stroke-dasharray="12 5"/></g>
+      </svg>
+      <div class="core"></div>
     </div>
-    <div class="status">
-      <span class="pill"><span class="dot"></span><b id="count">—</b>&nbsp;apps</span>
-      <span class="pill">build <b id="commit">—</b></span>
-      <span class="pill" id="built" title="">updated —</span>
+    <div>
+      <h1>PRISM</h1>
+      <div class="sub">Console · launcher · diagnostics · live registry for the desktop assistant</div>
+    </div>
+    <div class="stats">
+      <div><b id="nv">—</b><span>Vercel</span></div>
+      <div><b id="na">—</b><span>Artifacts</span></div>
+      <div><b id="commit">—</b><span id="built">Build</span></div>
     </div>
   </header>
 
-  <div class="search">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input id="q" type="search" placeholder="Search apps or things you'd say… (buy desk, drop calendar, duel night)" autocomplete="off">
-    <kbd>/</kbd>
-  </div>
+  <div class="search"><span>&gt;</span><input id="q" type="search" placeholder="Search apps or things you'd say… (cost fixer, nexus, buy desk)" autocomplete="off"><kbd>/</kbd></div>
+  <div id="sections"><div class="empty">// loading registry…</div></div>
 
-  <div id="sections"><div class="grid"><div class="empty">Loading apps…</div></div></div>
-
-  <section>
-    <h2>Voice cheat-sheet</h2>
-    <div class="cols">
+  <section class="group">
+    <div class="ghead"><h2>Diagnostics</h2><span class="rule"></span><span class="gs">Runs in this browser — checks your mic, clap detection and a British voice</span></div>
+    <div class="panels">
       <div class="panel">
+        <div class="pt">Clap sensor <small id="dstatus">offline</small></div>
+        <canvas id="scope"></canvas>
+        <div class="diagrow">
+          <button class="btn" id="micbtn">Start mic test</button>
+          <span class="flag" id="fclap">CLAP</span>
+          <span class="flag wake" id="fwake">DOUBLE CLAP · WAKE</span>
+        </div>
+        <p class="readout" style="margin-top:12px">Peak <b id="dpeak">0.00</b> · claps <b id="dclaps">0</b> · wakes <b id="dwakes">0</b> · threshold
+          <input type="range" id="thr" min="0.08" max="0.6" step="0.01" value="0.22"> <b id="thrv">0.22</b></p>
+        <p style="margin:4px 0 0">Same detector as the desktop app. If a double clap lights up green here, set <code>wake.clap_threshold</code> on your PC to the slider value.</p>
+      </div>
+      <div class="panel">
+        <div class="pt">Voice link <small>en-GB</small></div>
+        <p>Plays a British voice through this device's speakers. The desktop app uses Microsoft's neural <code>en-GB-RyanNeural</code>, which sounds smoother than most browser voices.</p>
+        <div class="diagrow" style="margin-top:12px">
+          <button class="btn" id="vbtn">Test voice</button>
+          <span class="readout" id="vname">—</span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="pt">Voice commands</div>
         <table>
-          <tr><td>👏👏</td><td>Wake. Weather greeting on the first wake and after an hour away; otherwise “Yes, sir?”</td></tr>
-          <tr><td>open / pull up / show me the ___</td><td>Opens the app instantly (no Claude round-trip)</td></tr>
-          <tr><td>what's the weather · forecast</td><td>Current conditions, high/low, rain chance</td></tr>
-          <tr><td>what time is it · what's the date</td><td>Local time</td></tr>
-          <tr><td>what can you open</td><td>Reads the registry aloud</td></tr>
-          <tr><td>anything else</td><td>Goes to Claude (your Claude Code login), answered in one or two calm sentences</td></tr>
-          <tr><td>that's all · goodbye · go to sleep</td><td>“Very good. Standing by.” → back to clap-listening</td></tr>
+          <tr><td>👏👏</td><td>Wake · weather greeting</td></tr>
+          <tr><td>open / pull up ___</td><td>Instant app launch</td></tr>
+          <tr><td>weather · forecast</td><td>Conditions, high/low, rain</td></tr>
+          <tr><td>what can you open</td><td>Reads the registry</td></tr>
+          <tr><td>anything else</td><td>Answered by Claude</td></tr>
+          <tr><td>that's all · goodbye</td><td>Back to standby</td></tr>
         </table>
       </div>
-      <div class="panel">
-        <h4>How updates flow</h4>
-        <div class="flow">
-          <div class="node">Ask Claude<small>“add my Shopify admin”</small></div><span class="arrow">→</span>
-          <div class="node">GitHub<small>meloxcyber/prism</small></div><span class="arrow">→</span>
-          <div class="node">Vercel<small>this console + /apps.json</small></div><span class="arrow">→</span>
-          <div class="node">Your PC<small>PRISM.bat pulls on launch</small></div>
-        </div>
-        <p style="margin-top:14px">Code changes arrive via <code>git pull</code> when you start PRISM. App-list changes arrive even without a restart of the repo: the assistant fetches <a href="/apps.json">/apps.json</a> from this site on start-up. Personal entries go in <code>apps.local.json</code> and are never overwritten.</p>
-      </div>
     </div>
   </section>
 
-  <section>
-    <h2>Set up on a new PC</h2>
-    <div class="cols">
+  <section class="group">
+    <div class="ghead"><h2>Setup &amp; updates</h2><span class="rule"></span></div>
+    <div class="panels">
       <div class="panel">
-        <h4>1 · Prerequisites</h4>
-        <ul>
-          <li>Python 3.10+ with “Add to PATH” ticked</li>
-          <li>Git for Windows</li>
+        <div class="pt">New PC</div>
+        <ol>
+          <li>Python 3.10+ (tick “Add to PATH”) and Git for Windows</li>
           <li>Claude Code — run <code>claude</code> once and sign in</li>
-        </ul>
+          <li><code>git clone https://github.com/meloxcyber/prism</code> → <code>install.bat</code></li>
+          <li><code>PRISM.bat</code> → the HUD opens → clap twice</li>
+        </ol>
       </div>
       <div class="panel">
-        <h4>2 · Get PRISM</h4>
-        <p><code>git clone https://github.com/meloxcyber/prism</code><br>then double-click <code>install.bat</code>.</p>
-        <p>Optional: copy <code>config.local.example.json</code> → <code>config.json</code> to change the voice, clap sensitivity or mic.</p>
-      </div>
-      <div class="panel">
-        <h4>3 · Run</h4>
-        <p>Double-click <code>PRISM.bat</code> and clap twice. <code>PRISM.bat --calibrate</code> tunes the clap threshold for your room; <code>autostart.bat</code> launches it at sign-in.</p>
+        <div class="pt">Update flow</div>
+        <p>Ask Claude → commit to <a href="https://github.com/meloxcyber/prism">GitHub</a> → Vercel rebuilds this console and <a href="/apps.json">/apps.json</a> → <code>PRISM.bat</code> pulls on launch. Your <code>config.json</code> and <code>apps.local.json</code> are never overwritten.</p>
       </div>
     </div>
   </section>
 
-  <footer>
-    <span>PRISM · <a href="https://github.com/meloxcyber/prism">github.com/meloxcyber/prism</a></span>
-    <span id="foot">Desktop-only entries (paths, commands) show here but open from the PC.</span>
-  </footer>
+  <footer><span>PRISM · <a href="https://github.com/meloxcyber/prism">github.com/meloxcyber/prism</a></span><span id="foot">Artifacts open with your Claude login</span></footer>
 </div>
 
 <script>
-(async () => {
-  const q = document.getElementById('q');
-  let apps = [];
-  try {
-    const r = await fetch('/apps.json', {cache: 'no-store'});
-    const j = await r.json();
-    apps = (j.apps || j).filter(a => a && a.key);
-  } catch (e) {
-    document.getElementById('sections').innerHTML = '<div class="grid"><div class="empty">Could not load apps.json</div></div>';
-    return;
-  }
-  try {
-    const m = await (await fetch('/meta.json', {cache: 'no-store'})).json();
-    document.getElementById('commit').textContent = m.commit || 'local';
-    const d = new Date(m.built_at);
-    const el = document.getElementById('built');
-    el.textContent = 'updated ' + d.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
-    el.title = m.commit_message || '';
-  } catch {}
-  document.getElementById('count').textContent = apps.length;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const SECTIONS = [
-    { id: 'vercel',   title: 'Vercel projects',  sub: 'Your hosted apps — full products, live data' },
-    { id: 'artifact', title: 'Claude artifacts', sub: 'Dashboards and tools built in Claude (open with your Claude login)' },
-    { id: 'other',    title: 'Other',            sub: '' },
-  ];
-  const sectionOf = a => SECTIONS.some(s => s.id === a.section) ? a.section : 'other';
-  const card = a => {
-    const say = (a.aliases || []).slice(0, 2).map(s => `<span>${esc(s)}</span>`).join('');
-    const web = (a.type || 'url') === 'url' && a.url;
-    const btn = web
-      ? `<a class="btn" href="${esc(a.url)}" target="_blank" rel="noopener">Open ↗</a>`
-      : `<span class="btn ghost" title="Opens from the desktop assistant">desktop</span>`;
-    const host = web ? esc(new URL(a.url).host.replace(/^www\./, '')) : esc(a.type || '');
-    return `<article class="card">
-      <div class="top"><h3>${esc(a.name || a.key)}</h3><span class="badge ${sectionOf(a)}">${sectionOf(a)}</span></div>
-      <div class="note">${esc(a.note || '')}<br><span class="key">${host}</span></div>
-      <div class="say">${say}</div>
-      <div class="row"><span class="key">${esc(a.key)}</span>${btn}</div>
-    </article>`;
-  };
-  const root = document.getElementById('sections');
-  const render = (list) => {
-    if (!list.length) { root.innerHTML = '<div class="grid"><div class="empty">No match. Try another word.</div></div>'; return; }
-    root.innerHTML = SECTIONS.map(sec => {
-      const items = list.filter(a => sectionOf(a) === sec.id);
-      if (!items.length) return '';
-      return `<section class="group">
-        <div class="group-head"><h2>${sec.title}</h2><span class="n">${items.length}</span>${sec.sub ? `<span class="sub">${sec.sub}</span>` : ''}</div>
-        <div class="grid">${items.map(card).join('')}</div>
-      </section>`;
-    }).join('');
-  };
-  const hay = a => [a.key, a.name, a.note, ...(a.aliases || [])].join(' ').toLowerCase();
-  const filter = () => {
-    const t = q.value.trim().toLowerCase();
-    render(t ? apps.filter(a => hay(a).includes(t)) : apps);
-  };
-  q.addEventListener('input', filter);
-  document.addEventListener('keydown', e => {
-    if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); }
-    if (e.key === 'Escape') { q.value = ''; filter(); q.blur(); }
-  });
+/* ---------------- registry ---------------- */
+const SECTIONS = [
+  { id:'vercel',   title:'Vercel projects',  sub:'Hosted products · live data' },
+  { id:'artifact', title:'Claude artifacts', sub:'Dashboards & tools built in Claude' },
+  { id:'other',    title:'Other',            sub:'' },
+];
+let apps = [];
+const sectionOf = a => SECTIONS.some(s => s.id === a.section) ? a.section : 'other';
+const card = a => {
+  const web = (a.type || 'url') === 'url' && a.url, sec = sectionOf(a);
+  const host = web ? new URL(a.url).host.replace(/^www\./,'') : (a.type || '');
+  return `<article class="card ${sec}">
+    <div class="top"><h3>${esc(a.name || a.key)}</h3><span class="badge ${sec}">${sec}</span></div>
+    <div class="note">${esc(a.note || '')}</div>
+    <div class="host">${esc(host)}</div>
+    <div class="say">${(a.aliases || []).slice(0,2).map(s=>`<span>${esc(s)}</span>`).join('')}</div>
+    <div class="row"><span class="key">${esc(a.key)}</span>${web ? `<a class="btn" href="${esc(a.url)}" target="_blank" rel="noopener">Open ↗</a>` : `<span class="btn ghost">desktop</span>`}</div>
+  </article>`;
+};
+function render(list){
+  const html = SECTIONS.map(s => {
+    const items = list.filter(a => sectionOf(a) === s.id);
+    if (!items.length) return '';
+    return `<section class="group"><div class="ghead"><h2>${s.title}</h2><span class="n">${items.length}</span><span class="rule"></span><span class="gs">${s.sub}</span></div><div class="grid">${items.map(card).join('')}</div></section>`;
+  }).join('');
+  $('sections').innerHTML = html || '<div class="empty">// no match</div>';
+}
+(async () => {
+  try {
+    const j = await (await fetch('/apps.json', {cache:'no-store'})).json();
+    apps = (j.apps || j).filter(a => a && a.key);
+  } catch { $('sections').innerHTML = '<div class="empty">// could not load apps.json</div>'; return; }
+  $('nv').textContent = apps.filter(a => a.section === 'vercel').length;
+  $('na').textContent = apps.filter(a => a.section === 'artifact').length;
   render(apps);
+  try {
+    const m = await (await fetch('/meta.json', {cache:'no-store'})).json();
+    $('commit').textContent = m.commit || 'local';
+    $('built').textContent = 'Build · ' + new Date(m.built_at).toLocaleDateString([], {month:'short', day:'numeric'});
+    $('built').title = m.commit_message || '';
+  } catch {}
 })();
+const hay = a => [a.key, a.name, a.note, ...(a.aliases || [])].join(' ').toLowerCase();
+$('q').addEventListener('input', e => { const t = e.target.value.trim().toLowerCase(); render(t ? apps.filter(a => hay(a).includes(t)) : apps); });
+document.addEventListener('keydown', e => { if (e.key === '/' && document.activeElement !== $('q')) { e.preventDefault(); $('q').focus(); } });
+
+/* ---------------- clap diagnostics (same algorithm as prism.py) ---------------- */
+class Clap {
+  constructor(thr){ this.thr=thr; this.noise=.004; this.last=0; this.onsets=[]; this.ref=0; this.pending=null; this.claps=0; }
+  feed(peak, rms, now){
+    if (this.pending){
+      const p=this.pending; p.seen++; if (rms > p.rms*.35) p.loud++;
+      if (p.seen >= 6){ this.pending=null; if (p.loud <= 2){ this.claps++; this.onClap&&this.onClap(); return this.reg(p.t); } }
+      this.last=peak; return false;
+    }
+    if (peak < this.thr*.5) this.noise = .95*this.noise + .05*rms;
+    if (peak >= this.thr && peak > this.last*2.5 && rms > this.noise*6 && now >= this.ref){ this.pending={t:now,rms,seen:0,loud:0}; this.ref=now+.1; }
+    this.last=peak; return false;
+  }
+  reg(t){
+    const prev=this.onsets.at(-1);
+    if (prev!==undefined){ const g=t-prev; if (g>=.15 && g<=.8){ this.onsets=[]; return true; } }
+    this.onsets.push(t); if (this.onsets.length>4) this.onsets.shift(); return false;
+  }
+}
+const det = new Clap(.22); let wakes=0, hist=new Array(150).fill(0);
+const flash = (el,ms) => { el.classList.add('on'); setTimeout(()=>el.classList.remove('on'), ms); };
+det.onClap = () => { $('dclaps').textContent = det.claps; flash($('fclap'), 350); };
+$('thr').oninput = e => { det.thr = +e.target.value; $('thrv').textContent = (+e.target.value).toFixed(2); };
+
+$('micbtn').onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(stream);
+    const node = ctx.createScriptProcessor(1024, 1, 1);
+    let buf = [];
+    const BLOCK = Math.round(ctx.sampleRate * .02);   // 20 ms blocks, like the desktop app
+    node.onaudioprocess = e => {
+      const d = e.inputBuffer.getChannelData(0);
+      for (let i=0;i<d.length;i++){ buf.push(d[i]); if (buf.length===BLOCK){
+        let pk=0, s=0; for (const x of buf){ const a=Math.abs(x); if(a>pk)pk=a; s+=x*x; }
+        const rms=Math.sqrt(s/buf.length); buf=[];
+        hist.push(pk); hist.shift();
+        if (det.feed(pk, rms, ctx.currentTime)){ wakes++; $('dwakes').textContent=wakes; flash($('fwake'), 900); }
+      }}
+    };
+    src.connect(node); node.connect(ctx.destination);
+    $('dstatus').textContent = 'live'; $('micbtn').textContent = 'Mic live'; $('micbtn').disabled = true;
+    draw();
+  } catch (e) { $('dstatus').textContent = 'mic blocked'; }
+};
+const sc = $('scope'), sx = sc.getContext('2d');
+function draw(){
+  const d = devicePixelRatio||1, r = sc.getBoundingClientRect(); sc.width=r.width*d; sc.height=r.height*d;
+  const w=sc.width, h=sc.height, mx=Math.max(.5, det.thr*1.8), bw=w/hist.length;
+  sx.clearRect(0,0,w,h);
+  hist.forEach((v,i)=>{ const bh=Math.min(1,v/mx)*h; sx.fillStyle = v>=det.thr ? '#ffb547' : 'rgba(55,228,255,.85)'; sx.fillRect(i*bw,h-bh,Math.max(1,bw-1),bh); });
+  const y=(1-det.thr/mx)*h; sx.strokeStyle='#ffb547'; sx.setLineDash([5,4]); sx.beginPath(); sx.moveTo(0,y); sx.lineTo(w,y); sx.stroke(); sx.setLineDash([]);
+  $('dpeak').textContent = hist.at(-1).toFixed(2);
+  requestAnimationFrame(draw);
+}
+
+/* ---------------- voice diagnostics ---------------- */
+function pickVoice(){
+  const vs = speechSynthesis.getVoices();
+  return vs.find(v=>/Ryan|Thomas|George|Daniel/i.test(v.name) && /en-GB/i.test(v.lang))
+      || vs.find(v=>/en-GB/i.test(v.lang) && /male|Ryan|George|Daniel|Thomas/i.test(v.name))
+      || vs.find(v=>/en-GB/i.test(v.lang)) || vs.find(v=>/^en/i.test(v.lang));
+}
+$('vbtn').onclick = () => {
+  const u = new SpeechSynthesisUtterance("Good morning, sir. All systems are operational, and the voice link is confirmed.");
+  const v = pickVoice(); if (v){ u.voice=v; u.lang=v.lang; $('vname').textContent = v.name; } else { $('vname').textContent = 'default voice'; }
+  u.rate = .95; u.pitch = .9; speechSynthesis.cancel(); speechSynthesis.speak(u);
+};
+speechSynthesis && speechSynthesis.addEventListener && speechSynthesis.addEventListener('voiceschanged', ()=>{ const v=pickVoice(); if(v) $('vname').textContent = v.name; });
 </script>
 </body>
 </html>

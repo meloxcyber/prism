@@ -41,5 +41,11 @@
   "sync": {
     "apps_url": "https://prism-meloxcyber.vercel.app/apps.json",
     "timeout_s": 4
+  },
+  "hud": {
+    "enabled": true,
+    "port": 7777,
+    "open_on_start": true,
+    "app_window": true
   }
 }

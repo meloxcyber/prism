@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRISM</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%2337e4ff' stroke-width='8'/><circle cx='50' cy='50' r='16' fill='%2337e4ff'/></svg>">
+<style>
+:root{
+  --bg:#02070d; --ink:#bdefff; --dim:#5d8ea3; --faint:#173547; --line:rgba(55,228,255,.22);
+  --c:#37e4ff;            /* state colour, changed by JS */
+  --glow:rgba(55,228,255,.55);
+  --amber:#ffb547; --red:#ff4d6a; --green:#46f0a6;
+  --mono:"Cascadia Mono","Consolas","SFMono-Regular",ui-monospace,monospace;
+  --sans:"Segoe UI","Bahnschrift",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
+body{
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 46%, rgba(20,90,120,.28), transparent 70%),
+    radial-gradient(circle at 50% 46%, rgba(55,228,255,.06), transparent 40%),
+    var(--bg);
+}
+/* hex grid + scanlines */
+body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.10;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M28 0 56 16v32L28 64 0 48V16zM28 64v33M0 16-28 0M56 16 84 0' fill='none' stroke='%2337e4ff' stroke-width='.7'/%3E%3C/svg%3E");}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px);mix-blend-mode:overlay}
+.vignette{position:fixed;inset:0;pointer-events:none;box-shadow:inset 0 0 220px 40px #000}
+
+.app{position:relative;height:100%;display:grid;grid-template-columns:320px 1fr 360px;grid-template-rows:72px 1fr 132px;gap:14px;padding:14px 18px;z-index:1}
+
+/* ---------- frame pieces ---------- */
+.panel{position:relative;border:1px solid var(--line);background:linear-gradient(180deg,rgba(8,30,44,.55),rgba(3,12,20,.55));
+  clip-path:polygon(0 12px,12px 0,calc(100% - 28px) 0,100% 28px,100% 100%,28px 100%,0 calc(100% - 28px));padding:14px 16px;overflow:hidden}
+.panel::before{content:"";position:absolute;left:0;top:0;width:60px;height:2px;background:var(--c);box-shadow:0 0 10px var(--glow)}
+.ptitle{font:600 11px/1 var(--mono);letter-spacing:.32em;color:var(--c);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.ptitle small{color:var(--dim);letter-spacing:.12em;font-weight:400}
+
+/* ---------- top bar ---------- */
+.top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:0 6px}
+.brand{display:flex;align-items:center;gap:16px}
+.brand .mark{width:38px;height:38px;border-radius:50%;border:2px solid var(--c);box-shadow:0 0 14px var(--glow),inset 0 0 10px var(--glow);display:grid;place-items:center}
+.brand .mark i{width:12px;height:12px;border-radius:50%;background:var(--c);box-shadow:0 0 12px var(--c)}
+.brand h1{margin:0;font:300 26px/1 var(--sans);letter-spacing:.55em;color:#e9fbff;text-shadow:0 0 18px var(--glow)}
+.brand p{margin:5px 0 0;font:11px/1 var(--mono);letter-spacing:.22em;color:var(--dim);text-transform:uppercase}
+.topstats{display:flex;gap:26px;font-family:var(--mono)}
+.stat{text-align:right}
+.stat b{display:block;font:300 22px/1 var(--sans);color:#e9fbff;letter-spacing:.06em}
+.stat span{font-size:10px;letter-spacing:.25em;color:var(--dim);text-transform:uppercase}
+
+/* ---------- left column ---------- */
+.left{grid-column:1;grid-row:2;display:flex;flex-direction:column;gap:14px;min-height:0}
+.sys{list-style:none;margin:0;padding:0;font-family:var(--mono);font-size:12px}
+.sys li{display:grid;grid-template-columns:14px 82px 1fr;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed rgba(55,228,255,.12)}
+.sys li:last-child{border-bottom:0}
+.sys .d{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.sys .d.bad{background:var(--red);box-shadow:0 0 8px var(--red)}
+.sys .k{color:#e9fbff;letter-spacing:.14em;text-transform:uppercase;font-size:11px}
+.sys .v{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+
+.meter{position:relative;height:120px;margin-top:4px}
+#scope{width:100%;height:100%;display:block}
+.thr{position:absolute;left:0;right:0;border-top:1px dashed var(--amber);pointer-events:none}
+.thr span{position:absolute;right:0;top:-15px;font:10px var(--mono);color:var(--amber);letter-spacing:.1em}
+.claprow{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font:11px var(--mono);color:var(--dim);letter-spacing:.12em}
+.clapflag{padding:4px 9px;border:1px solid var(--faint);color:var(--dim);letter-spacing:.25em;transition:all .15s}
+.clapflag.on{border-color:var(--c);color:#02070d;background:var(--c);box-shadow:0 0 18px var(--glow)}
+.weather .big{font:200 46px/1 var(--sans);color:#e9fbff;text-shadow:0 0 20px var(--glow)}
+.weather .city{font:11px var(--mono);letter-spacing:.22em;color:var(--dim);text-transform:uppercase;margin-top:6px}
+.weather .sum{font-size:12.5px;color:var(--ink);opacity:.8;line-height:1.5;margin-top:10px}
+
+/* ---------- centre: reactor ---------- */
+.core{grid-column:2;grid-row:2;position:relative;display:grid;place-items:center;min-height:0}
+.reactor{position:relative;width:min(62vh,560px);aspect-ratio:1}
+.reactor canvas,.reactor svg{position:absolute;inset:0;width:100%;height:100%}
+.spin{transform-origin:50% 50%;animation:spin var(--spd,40s) linear infinite}
+.spin.rev{animation-direction:reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+.orb{position:absolute;left:50%;top:50%;width:26%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%) scale(var(--pulse,1));
+  background:radial-gradient(circle at 50% 45%,#fff 0 8%,var(--c) 26%,rgba(55,228,255,.25) 55%,transparent 70%);
+  box-shadow:0 0 60px 10px var(--glow),0 0 140px 30px rgba(55,228,255,.18);transition:background .4s}
+.statebox{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);text-align:center;width:100%}
+.statebox .st{font:500 15px/1 var(--mono);letter-spacing:.6em;color:var(--c);text-shadow:0 0 14px var(--glow);text-transform:uppercase}
+.statebox .ln{margin-top:10px;font-size:13.5px;color:var(--dim);max-width:560px;margin-inline:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ticks{position:absolute;inset:-4%;}
+
+/* ---------- right column: comms log ---------- */
+.right{grid-column:3;grid-row:2;display:flex;flex-direction:column;min-height:0}
+.right .panel{flex:1;display:flex;flex-direction:column;min-height:0}
+.log{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding-right:6px;scrollbar-width:thin;scrollbar-color:var(--faint) transparent}
+.msg{font-size:13.5px;line-height:1.5;animation:in .35s ease-out}
+.msg .who{font:10px var(--mono);letter-spacing:.3em;color:var(--dim);text-transform:uppercase;margin-bottom:3px;display:flex;justify-content:space-between}
+.msg.prism .body{color:#e9fbff;border-left:2px solid var(--c);padding-left:10px;text-shadow:0 0 12px rgba(55,228,255,.25)}
+.msg.you .body{color:var(--ink);opacity:.85;border-left:2px solid var(--faint);padding-left:10px}
+.empty{color:var(--dim);font:12px var(--mono);letter-spacing:.12em}
+@keyframes in{from{opacity:0;transform:translateY(6px)}}
+
+/* ---------- bottom: command + launch ---------- */
+.bottom{grid-column:1/-1;grid-row:3;display:grid;grid-template-columns:1fr 1.25fr;gap:14px;min-height:0}
+.cmd{display:flex;flex-direction:column;justify-content:center;gap:12px}
+.cmdline{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:rgba(0,0,0,.35);padding:0 12px;height:46px}
+.cmdline span{font:14px var(--mono);color:var(--c)}
+.cmdline input{flex:1;background:transparent;border:0;outline:0;color:#e9fbff;font:15px var(--mono);letter-spacing:.03em}
+.cmdline input::placeholder{color:var(--dim)}
+.btns{display:flex;gap:10px}
+.hbtn{background:transparent;border:1px solid var(--c);color:var(--c);font:600 11px var(--mono);letter-spacing:.3em;padding:9px 16px;cursor:pointer;text-transform:uppercase;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);transition:all .15s}
+.hbtn:hover{background:var(--c);color:#02070d;box-shadow:0 0 18px var(--glow)}
+.launch{overflow:hidden}
+.tabs{display:flex;gap:16px}
+.tabs button{background:none;border:0;padding:0;font:600 11px var(--mono);letter-spacing:.3em;color:var(--dim);cursor:pointer;text-transform:uppercase}
+.tabs button.on{color:var(--c);text-shadow:0 0 10px var(--glow)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;max-height:62px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--faint) transparent}
+.chip{border:1px solid var(--line);background:rgba(55,228,255,.05);color:var(--ink);font:12px var(--mono);padding:6px 11px;cursor:pointer;letter-spacing:.04em;transition:all .12s}
+.chip:hover{border-color:var(--c);color:#02070d;background:var(--c)}
+.chip.vercel{border-color:rgba(255,255,255,.35);color:#fff}
+
+/* link lost */
+.lost{position:fixed;inset:0;display:none;place-items:center;background:rgba(2,7,13,.85);z-index:20;font:14px var(--mono);letter-spacing:.4em;color:var(--red);text-align:center}
+.lost.on{display:grid}
+.lost small{display:block;margin-top:12px;color:var(--dim);letter-spacing:.15em}
+
+@media (max-width:1100px){.app{grid-template-columns:260px 1fr 280px}}
+</style>
+</head>
+<body>
+<div class="vignette"></div>
+<div class="app">
+
+  <header class="top">
+    <div class="brand">
+      <div class="mark"><i></i></div>
+      <div><h1>PRISM</h1><p>Personal Responsive Intelligence · System Monitor</p></div>
+    </div>
+    <div class="topstats">
+      <div class="stat"><b id="uptime">00:00:00</b><span>Uptime</span></div>
+      <div class="stat"><b id="wakes">0</b><span>Wakes</span></div>
+      <div class="stat"><b id="date">—</b><span id="day">—</span></div>
+      <div class="stat"><b id="clock">--:--</b><span>Local time</span></div>
+    </div>
+  </header>
+
+  <aside class="left">
+    <div class="panel">
+      <div class="ptitle">Systems <small id="sysok">—</small></div>
+      <ul class="sys" id="sys"></ul>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Acoustic sensor <small id="peak">0.00</small></div>
+      <div class="meter"><canvas id="scope"></canvas><div class="thr" id="thr"><span>CLAP</span></div></div>
+      <div class="claprow"><span>CLAPS <b id="claps" style="color:#e9fbff">0</b></span><span class="clapflag" id="clapflag">CLAP</span></div>
+    </div>
+    <div class="panel weather" style="flex:1">
+      <div class="ptitle">Atmospherics</div>
+      <div class="big" id="temp">--°</div>
+      <div class="city" id="city">Locating…</div>
+      <div class="sum" id="wsum"></div>
+    </div>
+  </aside>
+
+  <main class="core">
+    <div class="reactor" id="reactor">
+      <canvas id="wave"></canvas>
+      <svg viewBox="0 0 400 400" aria-hidden="true">
+        <defs>
+          <filter id="g"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <g class="spin" style="--spd:90s" filter="url(#g)">
+          <circle cx="200" cy="200" r="192" fill="none" stroke="var(--c)" stroke-opacity=".35" stroke-width="1" stroke-dasharray="2 6"/>
+        </g>
+        <g class="spin rev" style="--spd:46s" filter="url(#g)">
+          <circle cx="200" cy="200" r="176" fill="none" stroke="var(--c)" stroke-opacity=".7" stroke-width="2" stroke-dasharray="90 30 10 30"/>
+        </g>
+        <g id="segs" filter="url(#g)"></g>
+        <g class="spin" style="--spd:24s" filter="url(#g)">
+          <circle cx="200" cy="200" r="118" fill="none" stroke="var(--c)" stroke-opacity=".55" stroke-width="6" stroke-dasharray="40 14"/>
+        </g>
+        <g class="spin rev" style="--spd:14s">
+          <circle cx="200" cy="200" r="100" fill="none" stroke="var(--c)" stroke-opacity=".9" stroke-width="1.5" stroke-dasharray="160 60 20 60"/>
+        </g>
+        <circle cx="200" cy="200" r="88" fill="none" stroke="var(--c)" stroke-opacity=".25" stroke-width="1"/>
+      </svg>
+      <div class="orb" id="orb"></div>
+    </div>
+    <div class="statebox"><div class="st" id="st">Booting</div><div class="ln" id="ln">Initialising systems…</div></div>
+  </main>
+
+  <aside class="right">
+    <div class="panel">
+      <div class="ptitle">Comms log <small id="lcount">0</small></div>
+      <div class="log" id="log"><div class="empty">// awaiting first contact</div></div>
+    </div>
+  </aside>
+
+  <section class="bottom">
+    <div class="panel cmd">
+      <div class="cmdline"><span>&gt;</span><input id="q" placeholder="Type a command — or clap twice" autocomplete="off" spellcheck="false"></div>
+      <div class="btns">
+        <button class="hbtn" id="bwake">Wake</button>
+        <button class="hbtn" id="bvoice">Test voice</button>
+        <button class="hbtn" id="bweather">Weather</button>
+      </div>
+    </div>
+    <div class="panel launch">
+      <div class="ptitle"><div class="tabs"><button class="on" data-t="vercel">Vercel projects</button><button data-t="artifact">Claude artifacts</button></div><small id="acount">—</small></div>
+      <div class="chips" id="chips"></div>
+    </div>
+  </section>
+</div>
+<div class="lost" id="lost"><div>LINK LOST<small>Prism isn't running — start PRISM.bat</small></div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const COLORS = {
+  booting:  ['#37e4ff','rgba(55,228,255,.55)','INITIALISING'],
+  sleeping: ['#2aa9c9','rgba(42,169,201,.45)','STANDING BY'],
+  listening:['#37e4ff','rgba(55,228,255,.75)','LISTENING'],
+  thinking: ['#ffb547','rgba(255,181,71,.6)','PROCESSING'],
+  speaking: ['#bff7ff','rgba(150,240,255,.8)','SPEAKING'],
+};
+const SPEED = {booting:1, sleeping:.35, listening:1.6, thinking:3.2, speaking:1.2};
+const root = document.documentElement.style;
+let S = null, lastLogLen = -1, lastClaps = null, tab = 'vercel', history = new Array(160).fill(0), micHist = new Array(160).fill(0), t0 = performance.now();
+
+/* --- segmented level ring --- */
+const segG = $('segs'), SEG = 72, segs = [];
+for (let i = 0; i < SEG; i++) {
+  const a = (i / SEG) * Math.PI * 2 - Math.PI / 2, a2 = a + (Math.PI * 2 / SEG) * .62;
+  const r1 = 136, r2 = 158, p = (r,a)=>[200+r*Math.cos(a),200+r*Math.sin(a)];
+  const [x1,y1]=p(r1,a),[x2,y2]=p(r2,a),[x3,y3]=p(r2,a2),[x4,y4]=p(r1,a2);
+  const el = document.createElementNS('http://www.w3.org/2000/svg','path');
+  el.setAttribute('d',`M${x1} ${y1}L${x2} ${y2}L${x3} ${y3}L${x4} ${y4}Z`);
+  el.setAttribute('fill','var(--c)'); el.setAttribute('fill-opacity','.12');
+  segG.appendChild(el); segs.push(el);
+}
+
+/* --- canvases --- */
+const wave = $('wave'), wctx = wave.getContext('2d'), scope = $('scope'), sctx = scope.getContext('2d');
+function fit(c){ const r=c.getBoundingClientRect(), d=devicePixelRatio||1; c.width=r.width*d; c.height=r.height*d; }
+addEventListener('resize',()=>{fit(wave);fit(scope)}); fit(wave); fit(scope);
+
+function frame(now){
+  const st = S ? S.state : 'booting';
+  const t = (now - t0) / 1000;
+  let lvl = S ? S.level : 0;
+  if (st === 'speaking') lvl = .25 + .2*Math.abs(Math.sin(t*9)) * Math.abs(Math.sin(t*2.3+1));
+  if (st === 'thinking') lvl = .12 + .08*Math.sin(t*6);
+  history.push(lvl); history.shift();
+  micHist.push(S ? S.level : 0); micHist.shift();
+
+  // ring segments: travelling highlight + level
+  const sp = SPEED[st] || 1, lit = Math.min(1, lvl*3.2);
+  segs.forEach((el,i)=>{
+    const sweep = (Math.sin((i/SEG)*Math.PI*2 - t*sp*2) + 1) / 2;
+    el.setAttribute('fill-opacity', (0.08 + sweep*.35*(st==='sleeping'?.5:1) + (i/SEG < lit ? .55 : 0)).toFixed(2));
+  });
+  root.setProperty('--pulse', (1 + lvl*0.9 + (st==='sleeping'? .03*Math.sin(t*1.6):0)).toFixed(3));
+
+  // radial waveform
+  const W = wave.width, H = wave.height, cx=W/2, cy=H/2, R=W*.30;
+  wctx.clearRect(0,0,W,H);
+  wctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--c');
+  wctx.lineWidth = 2*(devicePixelRatio||1); wctx.shadowBlur = 12; wctx.shadowColor = wctx.strokeStyle;
+  wctx.beginPath();
+  const N = 120;
+  for (let i=0;i<=N;i++){
+    const a = i/N*Math.PI*2, h = history[(history.length-1-(i%60)*2+history.length)%history.length];
+    const r = R + h*W*.16*(0.6+0.4*Math.sin(i*1.7+t*4)) ;
+    const x = cx+Math.cos(a)*r, y = cy+Math.sin(a)*r;
+    i?wctx.lineTo(x,y):wctx.moveTo(x,y);
+  }
+  wctx.globalAlpha=.5; wctx.stroke(); wctx.globalAlpha=1;
+
+  // acoustic scope (left panel)
+  const w2=scope.width, h2=scope.height; sctx.clearRect(0,0,w2,h2);
+  const thr = S ? S.threshold : .22, maxv = Math.max(.5, thr*1.8);
+  sctx.fillStyle='rgba(55,228,255,.08)'; sctx.fillRect(0,0,w2,h2);
+  const bw = w2/micHist.length;
+  micHist.forEach((v,i)=>{
+    const bh = Math.min(1,v/maxv)*h2;
+    sctx.fillStyle = v>=thr ? '#ffb547' : 'rgba(55,228,255,.85)';
+    sctx.fillRect(i*bw, h2-bh, Math.max(1,bw-1), bh);
+  });
+  $('thr').style.top = ((1 - thr/maxv) * 100) + '%';
+  $('peak').textContent = (S?S.level:0).toFixed(2);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* --- state polling --- */
+const fmtUp = s => [s/3600|0,(s%3600)/60|0,s%60].map(n=>String(n).padStart(2,'0')).join(':');
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const SYS = [['brain','Brain'],['mic','Mic'],['voice','Voice'],['wake','Wake'],['stt','Hearing'],['weather','Weather']];
+
+async function poll(){
+  try{
+    const r = await fetch('/state',{cache:'no-store'}); S = await r.json(); $('lost').classList.remove('on');
+  }catch(e){ $('lost').classList.add('on'); setTimeout(poll,1000); return; }
+  const [c,g,label] = COLORS[S.state] || COLORS.booting;
+  root.setProperty('--c',c); root.setProperty('--glow',g);
+  $('st').textContent = label; $('ln').textContent = S.line || '';
+  $('uptime').textContent = fmtUp(S.uptime); $('wakes').textContent = S.wakes;
+  $('claps').textContent = S.claps;
+  if (lastClaps !== null && S.claps > lastClaps){ const f=$('clapflag'); f.classList.add('on'); setTimeout(()=>f.classList.remove('on'),450); }
+  lastClaps = S.claps;
+
+  // systems
+  let ok=0; $('sys').innerHTML = SYS.map(([k,n])=>{ const s=S.systems[k]||{}; if(s.ok)ok++;
+    return `<li><span class="d ${s.ok?'':'bad'}"></span><span class="k">${n}</span><span class="v" title="${esc(s.detail)}">${esc(s.detail)}</span></li>`}).join('');
+  $('sysok').textContent = `${ok}/${SYS.length} ONLINE`;
+
+  // weather
+  const m = /(-?\d+)°F,\s*(.*)/.exec(S.weather.short||'');
+  $('temp').textContent = m ? m[1]+'°' : '--°'; $('city').textContent = (S.weather.city||'') + (m? ' · '+m[2] : '');
+  $('wsum').textContent = S.weather.summary||'';
+
+  // log
+  if (S.transcript.length !== lastLogLen || (S.transcript.length && S.transcript.at(-1).t !== window._lt)){
+    lastLogLen = S.transcript.length; window._lt = S.transcript.length? S.transcript.at(-1).t : 0;
+    $('lcount').textContent = S.transcript.length;
+    $('log').innerHTML = S.transcript.length ? S.transcript.map(x=>{
+      const tm = new Date(x.t*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      return `<div class="msg ${x.who}"><div class="who"><span>${x.who==='you'?'YOU':S.name.toUpperCase()}</span><span>${tm}</span></div><div class="body">${esc(x.text)}</div></div>`}).join('')
+      : '<div class="empty">// awaiting first contact</div>';
+    $('log').scrollTop = 1e9;
+  }
+  renderChips();
+  setTimeout(poll, 90);
+}
+poll();
+
+let chipsKey='';
+function renderChips(){
+  const list = S.apps.filter(a => tab==='vercel' ? a.section==='vercel' : a.section!=='vercel');
+  const key = tab + list.map(a=>a.key).join();
+  if (key===chipsKey) return; chipsKey=key;
+  $('acount').textContent = list.length + ' LINKED';
+  $('chips').innerHTML = list.map(a=>`<button class="chip ${a.section}" data-k="${esc(a.key)}">${esc(a.name)}</button>`).join('');
+}
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); tab=b.dataset.t; chipsKey=''; S&&renderChips();
+});
+$('chips').onclick = e => { const k = e.target.dataset.k; if(k) post('/open',{key:k}); };
+
+/* --- commands --- */
+const post = (p,b={}) => fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+$('q').addEventListener('keydown',e=>{ if(e.key==='Enter' && e.target.value.trim()){ post('/cmd',{text:e.target.value}); e.target.value=''; }});
+$('bwake').onclick = ()=>post('/wake');
+$('bvoice').onclick = ()=>post('/test-voice');
+$('bweather').onclick = ()=>post('/cmd',{text:"what's the weather"});
+document.addEventListener('keydown',e=>{ if(e.key==='/' && document.activeElement!==$('q')){e.preventDefault();$('q').focus();} });
+
+/* --- clock --- */
+function tick(){ const d=new Date();
+  $('clock').textContent = d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  $('date').textContent = d.toLocaleDateString([], {month:'short',day:'2-digit'}).toUpperCase();
+  $('day').textContent = d.toLocaleDateString([], {weekday:'long'}).toUpperCase(); }
+tick(); setInterval(tick, 1000);
+</script>
+</body>
+</html>
