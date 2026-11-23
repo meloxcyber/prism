@@ -1,0 +1,157 @@
+{
+  "_help": [
+    "Single source of truth for Prism's voice commands.",
+    "The HUD's Commands tab and the Vercel console both display this file.",
+    "'patterns' are case-insensitive regular expressions Prism matches against what you say, checked in the order listed here.",
+    "Commands without patterns are built in (handled in prism.py) and listed here so they show on the cheat sheet.",
+    "'say' are example phrasings; the first one is what the HUD sends when you click the command."
+  ],
+  "categories": [
+    {
+      "name": "Store tasks",
+      "icon": "◆",
+      "commands": [
+        {
+          "id": "run_all",
+          "title": "Run all store tasks",
+          "say": ["Run all my store tasks", "Run my Monday reports", "Run everything"],
+          "does": "Missed sales PDF for the last 7 days, opens Cost Fixer with the missing-cost count, and opens Liquidation with StockX and eBay.",
+          "patterns": [
+            "\\brun (all )?(of )?(my |the )?(store tasks|tasks|reports|monday reports|weekly reports|daily reports)\\b",
+            "\\brun everything\\b"
+          ]
+        },
+        {
+          "id": "tasks_today",
+          "title": "Today's task list",
+          "say": ["What's on my list today?", "Store tasks", "What do I need to do today?"],
+          "does": "Reads your three tasks with live numbers: missed sales this week, items missing cost, and the liquidation check. Opens nothing.",
+          "patterns": [
+            "\\bwhat'?s on (my|the) (list|plate|agenda)\\b",
+            "\\bwhat do i (need|have) to do\\b",
+            "^(?:prism[, ]+)?(my |the )?(daily |store )?tasks\\??$",
+            "\\b(my|the) (daily|store) tasks\\b"
+          ]
+        },
+        {
+          "id": "ms_report",
+          "title": "Missed sales report (7 days)",
+          "say": ["Run the missed sales report", "Pull the missed sales report", "Weekly missed sales"],
+          "does": "Pulls the last 7 days from Missed Sales, builds a PDF report and opens it on screen, then reads you the headline numbers.",
+          "patterns": [
+            "\\bmiss(ed|ing)? ?sales?\\b.*\\breport\\b",
+            "\\breport\\b.*\\bmiss(ed|ing)? ?sales?\\b",
+            "\\bweekly miss(ed|ing)? ?sales?\\b"
+          ]
+        },
+        {
+          "id": "ms_count",
+          "title": "Missed sales this week",
+          "say": ["How many missed sales this week?", "Missed sales this week"],
+          "does": "Says the 7-day count and the most-requested item. No files, no windows.",
+          "patterns": [
+            "\\bhow many miss(ed|ing)? ?sales?\\b",
+            "\\bmiss(ed|ing)? ?sales? (this|last|for the) week\\b"
+          ]
+        },
+        {
+          "id": "cost_count",
+          "title": "Items missing cost",
+          "say": ["How many items need cost?", "Cost fixer count", "How many are missing cost?"],
+          "does": "Checks ConsignR through Cost Fixer and says how many store-owned items have no cost. Opens nothing.",
+          "patterns": [
+            "\\bhow many\\b.*\\b(need|needs|missing|without)\\b.*\\bcosts?\\b",
+            "\\bcost ?fixer (count|number|status|total)\\b",
+            "\\bmissing costs?\\b"
+          ]
+        },
+        {
+          "id": "cost_open",
+          "title": "Open Cost Fixer",
+          "say": ["Open the cost fixer", "Pull up cost fixer"],
+          "does": "Opens Cost Fixer and tells you how many items still need a cost.",
+          "patterns": [
+            "\\b(open|pull up|bring up|launch|show|start)( me)?( up)?( the| my)? cost ?fixer\\b"
+          ]
+        },
+        {
+          "id": "liquidation",
+          "title": "Liquidation check",
+          "say": ["Open the liquidation tool", "Liquidation check", "Run liquidation"],
+          "does": "Opens the HOH Liquidation artifact, StockX Pro sales history (Completed) and eBay Seller Hub orders, so you can add anything that sold.",
+          "patterns": [
+            "\\b(open|pull up|bring up|launch|show|start)( me)?( up)?( the| my)? liquidation\\b",
+            "\\bliquidation (check|run|time|tool)\\b",
+            "\\b(run|do|check) (the |my )?liquidation\\b"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Open apps",
+      "icon": "▣",
+      "commands": [
+        {
+          "id": "open_app",
+          "title": "Open any app",
+          "say": ["Open Nexus", "Pull up missed sales", "Show me the drop calendar", "Open the buy desk"],
+          "does": "Opens any app in your registry: Vercel projects and Claude artifacts. Say 'open', 'pull up', 'bring up' or 'show me' plus its name. The full list is in the Apps section below."
+        },
+        {
+          "id": "list_apps",
+          "title": "What can you open?",
+          "say": ["What can you open?", "List my apps"],
+          "does": "Reads out your Vercel projects and a few of your Claude artifacts."
+        }
+      ]
+    },
+    {
+      "name": "Prism",
+      "icon": "◎",
+      "commands": [
+        {
+          "id": "wake",
+          "title": "Wake Prism",
+          "say": ["👏👏 (two claps)"],
+          "does": "Wakes Prism. First wake of the session (or after an hour) includes the weather."
+        },
+        {
+          "id": "weather",
+          "title": "Weather",
+          "say": ["What's the weather?", "Forecast", "Is it going to rain?"],
+          "does": "Current conditions, today's high and low, and rain chance."
+        },
+        {
+          "id": "time",
+          "title": "Time and date",
+          "say": ["What time is it?", "What's the date?"],
+          "does": "Local time and date."
+        },
+        {
+          "id": "mic_off",
+          "title": "Mute the mic",
+          "say": ["Mute the mic", "Turn off the microphone"],
+          "does": "Switches the microphone off. Turn it back on from the HUD (Mic button or press M)."
+        },
+        {
+          "id": "sleep",
+          "title": "Stand by",
+          "say": ["That's all", "Goodbye", "Go to sleep"],
+          "does": "Ends the conversation. Prism goes back to waiting for two claps."
+        }
+      ]
+    },
+    {
+      "name": "Ask anything",
+      "icon": "✦",
+      "commands": [
+        {
+          "id": "ask",
+          "title": "Ask Claude",
+          "say": ["What's the latest on the Cowboys?", "What time does Midland Park Mall close today?", "Draft a reply to a customer asking about Black Cats"],
+          "does": "Anything else goes to Claude (your Claude Code login), which can search the web. You get a short spoken answer."
+        }
+      ]
+    }
+  ]
+}

@@ -5,3 +5,4 @@ requirements.txt
 config.local.example.json
 apps.local.example.json
 __pycache__
+store_tasks.py

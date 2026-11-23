@@ -69,6 +69,26 @@ Fast, offline-ish paths (no Claude round-trip):
 
 Everything else goes to `claude -p` with a system prompt that includes the time, weather, your app list and the last few turns of conversation. Claude replies as Prism in one or two sentences and can also return app keys to open ("open everything I need for a buy-in" → Buy Desk + Buy-In Board). Tools are disabled for those calls, so Prism can't edit files or run commands through Claude. A Claude round-trip takes a few seconds — that's CLI start-up, not Prism.
 
+## Store tasks
+
+| Say | Prism does |
+|---|---|
+| "What's on my list today?" | Reads your three tasks with live numbers |
+| "Run the missed sales report" | Last 7 days → PDF in `JXRS\Reports` → opens it → reads the headline |
+| "How many missed sales this week?" | Count and the top item, no files |
+| "How many items need cost?" | Counts store-owned ConsignR items with no cost (same rule as Cost Fixer) |
+| "Open the cost fixer" | Opens Cost Fixer and says the count |
+| "Open the liquidation tool" | HOH Liquidation + StockX Pro History → Completed + eBay Seller Hub → All orders |
+| "Run all my store tasks" | All of the above in order |
+
+The full list lives in `commands.json`. Press **C** on the HUD, or click **Commands**, to see every phrase; click any phrase to run it. The **Store tasks** tab on the launch bar has one-click buttons.
+
+Passwords go in your local `config.json` only (git-ignored):
+
+```json
+"store": { "missed_sales_key": "…", "cost_fixer_password": "…" }
+```
+
 ## The brain (Claude Code)
 
 Prism thinks with **Claude Code**, signed in with your Claude account (no API key). Click **Connect brain** on the HUD, or double-click `setup_brain.bat`. It installs Claude Code with the official installer if it's missing, then opens your browser to sign in. Prism notices within seconds; the BRAIN light turns green with no restart.

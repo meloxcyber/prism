@@ -53,5 +53,14 @@
     "port": 7777,
     "open_on_start": true,
     "app_window": true
+  },
+  "store": {
+    "missed_sales_url": "https://hoh-missed-sales-amber.vercel.app",
+    "missed_sales_key": "",
+    "cost_fixer_url": "https://hoh-cost-fixer.vercel.app",
+    "cost_fixer_password": "",
+    "report_days": 7,
+    "report_day": "Monday",
+    "reports_dir": ""
   }
 }

@@ -20,7 +20,7 @@
         "fix costs",
         "cost fix"
       ],
-      "note": "HOH inventory cost fixer (Vercel)"
+      "note": "HOH Cost Fixer — ConsignR items missing cost (Vercel)"
     },
     {
       "key": "missed-sales",
@@ -141,9 +141,11 @@
       "aliases": [
         "liquidation",
         "liquidation board",
-        "clearance"
+        "clearance",
+        "liquidation tool",
+        "hoh liquidation"
       ],
-      "note": "liquidation planning",
+      "note": "HOH liquidation tracker — check StockX + eBay sales and add them here",
       "section": "artifact"
     },
     {

@@ -91,6 +91,13 @@ table{width:100%;border-collapse:collapse}
 td{padding:8px 0;border-top:1px dashed rgba(55,228,255,.12);vertical-align:top;font-size:13px;color:var(--dim)}
 td:first-child{font:12.5px var(--mono);color:var(--hi);width:48%;padding-right:12px}
 
+/* voice commands */
+.ccat{margin-bottom:18px}
+.ccat h4{margin:0 0 10px;font:600 11px var(--mono);letter-spacing:.3em;color:var(--hi);text-transform:uppercase}
+.says{display:flex;flex-direction:column;gap:4px;margin:6px 0 8px}
+.says span{font:12.5px var(--mono);color:var(--ink)}
+.says span::before{content:"› ";color:var(--c)}
+
 /* diagnostics */
 #scope{width:100%;height:110px;display:block;background:rgba(55,228,255,.06);margin:6px 0 10px}
 .diagrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
@@ -129,6 +136,11 @@ footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);display
 
   <div class="search"><span>&gt;</span><input id="q" type="search" placeholder="Search apps or things you'd say… (cost fixer, nexus, buy desk)" autocomplete="off"><kbd>/</kbd></div>
   <div id="sections"><div class="empty">// loading registry…</div></div>
+
+  <section class="group" id="voice">
+    <div class="ghead"><h2>Voice commands</h2><span class="rule"></span><span class="gs">Everything you can say to Prism</span></div>
+    <div id="cmds"><div class="empty">// loading commands…</div></div>
+  </section>
 
   <section class="group">
     <div class="ghead"><h2>Diagnostics</h2><span class="rule"></span><span class="gs">Runs in this browser — checks your mic, clap detection and a British voice</span></div>
@@ -238,6 +250,17 @@ function render(list){
 const hay = a => [a.key, a.name, a.note, ...(a.aliases || [])].join(' ').toLowerCase();
 $('q').addEventListener('input', e => { const t = e.target.value.trim().toLowerCase(); render(t ? apps.filter(a => hay(a).includes(t)) : apps); });
 document.addEventListener('keydown', e => { if (e.key === '/' && document.activeElement !== $('q')) { e.preventDefault(); $('q').focus(); } });
+
+/* ---------------- voice commands ---------------- */
+(async () => {
+  try {
+    const c = await (await fetch('/commands.json', {cache:'no-store'})).json();
+    $('cmds').innerHTML = c.categories.map(cat => `<div class="ccat"><h4>${esc(cat.icon||'')} ${esc(cat.name)}</h4><div class="grid">${
+      cat.commands.map(x => `<article class="card"><div class="top"><h3>${esc(x.title)}</h3></div>
+        <div class="says">${(x.say||[]).map(p=>`<span>“${esc(p)}”</span>`).join('')}</div>
+        <div class="note">${esc(x.does||'')}</div></article>`).join('')}</div></div>`).join('');
+  } catch { $('cmds').innerHTML = '<div class="empty">// could not load commands.json</div>'; }
+})();
 
 /* ---------------- clap diagnostics (same algorithm as prism.py) ---------------- */
 class Clap {

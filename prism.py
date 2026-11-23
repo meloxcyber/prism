@@ -49,6 +49,7 @@ CONFIG_PATH = HERE / "config.json"              # your local settings (git-ignor
 CONFIG_EXAMPLE = HERE / "config.example.json"   # defaults shipped with the repo
 APPS_PATH = HERE / "apps.json"                  # shared registry (updated via GitHub/Vercel)
 APPS_LOCAL = HERE / "apps.local.json"           # your personal additions (git-ignored)
+COMMANDS_PATH = HERE / "commands.json"          # voice commands: matching + the HUD cheat sheet
 IS_WINDOWS = os.name == "nt"
 SAMPLE_RATE = 16000
 BLOCK_MS = 20
@@ -127,6 +128,14 @@ DEFAULT_CONFIG: dict = {
         "port": 7777,
         "open_on_start": True,
         "app_window": True,  # chromeless Edge/Chrome window
+    },
+    "store": {
+        # Handful of Hype store tasks. Put the two passwords in your local config.json
+        # (git-ignored) — never in config.example.json.
+        "missed_sales_key": "",
+        "cost_fixer_password": "",
+        "report_days": 7,
+        "report_day": "Monday",
     },
     "sync": {
         # Hosted copy of apps.json (the Vercel console). Fetched at start-up so new apps
@@ -889,6 +898,37 @@ Recent conversation:
 # --------------------------------------------------------------------------- #
 # The assistant
 # --------------------------------------------------------------------------- #
+class Commands:
+    """Loads commands.json: the voice phrases Prism understands, shown on the HUD's Commands tab."""
+
+    def __init__(self, path: Path = COMMANDS_PATH):
+        self.path = path
+        self.data: dict = {"categories": []}
+        self.compiled: list[tuple[str, re.Pattern]] = []
+        self.reload()
+
+    def reload(self):
+        data = _read_json(self.path)
+        if not isinstance(data, dict):
+            return
+        self.data = data
+        self.compiled = []
+        for cat in data.get("categories", []):
+            for cmd in cat.get("commands", []):
+                for pat in cmd.get("patterns", []) or []:
+                    try:
+                        self.compiled.append((cmd["id"], re.compile(pat, re.I)))
+                    except re.error as e:
+                        log(f"[yellow]Bad pattern in commands.json ({cmd.get('id')}):[/yellow] {e}")
+
+    def match(self, text: str) -> str | None:
+        t = " ".join(text.strip().split())
+        for cid, rx in self.compiled:
+            if rx.search(t):
+                return cid
+        return None
+
+
 SLEEP_RE = re.compile(r"\b(good ?bye|that'?s all|that is all|go to sleep|never ?mind|stand down|thank you,? that'?s it|dismissed)\b", re.I)
 WEATHER_RE = re.compile(r"\b(weather|forecast|temperature|how (?:hot|cold|warm) is it|is it (?:raining|going to rain))\b", re.I)
 TIME_RE = re.compile(r"\b(what time is it|what'?s the time|time is it|what'?s the date|what day is it)\b", re.I)
@@ -907,6 +947,9 @@ class Prism:
         self.weather = Weather(cfg["weather"])
         self.launcher = Launcher(load_apps(cfg.get("sync")))
         self.brain = Brain(cfg["brain"], self.launcher, self.weather, self.address)
+        self.commands = Commands()
+        from store_tasks import StoreTasks
+        self.store = StoreTasks(cfg.get("store", {}), self.launcher, HERE, log)
         self.transcriber = Transcriber(cfg["listen"])
         self.detector = ClapDetector(cfg["wake"])
         self.mic: Mic | None = None
@@ -1049,6 +1092,57 @@ class Prism:
             if self.state == "speaking":
                 self.set_state(prev if prev != "speaking" else "sleeping")
 
+    # ---- store tasks (ids from commands.json) -------------------------------
+    def _cmd_tasks_today(self):
+        self.set_state("thinking", "Checking your store tasks…")
+        self._speak(self.store.today_say())
+
+    def _cmd_ms_count(self):
+        self.set_state("thinking", "Pulling the last 7 days of missed sales…")
+        entries, start, end = self.store.ms_entries()
+        self._speak(self.store.ms_say(self.store.ms_stats(entries, start, end)))
+
+    def _cmd_ms_report(self):
+        self.set_state("thinking", "Building the missed sales report…")
+        path, stats = self.store.ms_report()
+        self.add_line("prism", f"Report saved: {path}")
+        self._speak(self.store.ms_say(stats, report=True))
+
+    def _cmd_cost_count(self):
+        self.set_state("thinking", "Checking ConsignR for missing costs…")
+        self._speak(self.store.cost_say(*self.store.cost_missing()))
+
+    def _cmd_cost_open(self):
+        self.store.open_cost_fixer()
+        self.set_state("thinking", "Opening Cost Fixer · counting missing costs…")
+        try:
+            msg = self.store.cost_say(*self.store.cost_missing())
+        except Exception as e:
+            msg = f"I couldn't get the count: {e}."
+        self._speak(f"Opening Cost Fixer. {msg}")
+
+    def _cmd_liquidation(self):
+        opened = self.store.open_liquidation()
+        self.add_line("prism", "Opened: " + ", ".join(opened))
+        self._speak("Liquidation tool's up, with your StockX and eBay sales alongside. Add anything that's sold.")
+
+    def _cmd_run_all(self):
+        self.set_state("thinking", "Running your store tasks · missed sales…")
+        try:
+            path, stats = self.store.ms_report()
+            self.add_line("prism", f"Report saved: {path}")
+            self._speak("First, missed sales. " + self.store.ms_say(stats, report=True))
+        except Exception as e:
+            self._speak(f"I couldn't build the missed sales report: {e}.")
+        self.store.open_cost_fixer()
+        self.set_state("thinking", "Running your store tasks · cost fixer…")
+        try:
+            self._speak("Next, Cost Fixer. " + self.store.cost_say(*self.store.cost_missing()))
+        except Exception as e:
+            self._speak(f"Cost Fixer is open, but I couldn't get the count: {e}.")
+        self.store.open_liquidation()
+        self._speak("And liquidation is up, with StockX and eBay alongside. That's everything.")
+
     # ---- command handling -------------------------------------------------
     def handle(self, text: str) -> bool:
         """Returns True if the assistant should go back to sleep."""
@@ -1064,6 +1158,15 @@ class Prism:
         if SLEEP_RE.search(text):
             self._speak("Very good. Standing by.")
             return True
+
+        cid = self.commands.match(text)
+        if cid and hasattr(self, f"_cmd_{cid}"):
+            try:
+                getattr(self, f"_cmd_{cid}")()
+            except Exception as e:  # StoreError and anything unexpected: say it, don't crash
+                log(f"[red]{cid} failed:[/red] {e}")
+                self._speak(f"I couldn't finish that, {self.address}: {e}.")
+            return False
 
         if LIST_RE.search(text):
             vercel = [a.get("name", a["key"]) for a in self.launcher.apps if a.get("section") == "vercel"]
@@ -1275,6 +1378,13 @@ def start_hud(prism: Prism, cfg: dict) -> str:
                 return self._send(200, (HUD_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
             if path == "/state":
                 return self._send(200, json.dumps(prism.snapshot()))
+            if path == "/commands":
+                prism.commands.reload()
+                return self._send(200, json.dumps({
+                    "categories": prism.commands.data.get("categories", []),
+                    "apps": [{"key": a["key"], "name": a.get("name", a["key"]), "section": a.get("section", "other"),
+                              "aliases": a.get("aliases", [])[:3]} for a in prism.launcher.apps],
+                }))
             return self._send(404, '{"error":"not found"}')
 
         def do_POST(self):

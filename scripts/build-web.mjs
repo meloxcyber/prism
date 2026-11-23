@@ -7,7 +7,7 @@ const out = "dist";
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 cpSync("web", out, { recursive: true });
-for (const f of ["apps.json", "config.example.json", "README.md"]) if (existsSync(f)) cpSync(f, `${out}/${f}`);
+for (const f of ["apps.json", "commands.json", "config.example.json", "README.md"]) if (existsSync(f)) cpSync(f, `${out}/${f}`);
 
 let sha = process.env.VERCEL_GIT_COMMIT_SHA || "";
 let msg = process.env.VERCEL_GIT_COMMIT_MESSAGE || "";
