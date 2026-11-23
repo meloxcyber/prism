@@ -1049,6 +1049,24 @@ class Prism:
     def _mic_live(self) -> bool:
         return self.mic is not None and self.mic_on
 
+    def restart(self, speak: bool = True):
+        """Relaunch via PRISM.bat (pulls the latest from GitHub), then exit this instance."""
+        if speak:
+            self._speak("Restarting to pick up the latest version. Back in a moment.")
+        bat = HERE / "PRISM.bat"
+        if IS_WINDOWS and bat.exists():
+            # wait 3 s so this process releases the mic and the HUD port first
+            subprocess.Popen(["cmd.exe", "/c", "start", "PRISM", "cmd.exe", "/c",
+                              f'timeout /t 3 /nobreak >nul & "{bat}" --no-hud-open'], cwd=str(HERE))
+        else:
+            subprocess.Popen([sys.executable, str(HERE / "prism.py")], cwd=str(HERE))
+        if self.mic:
+            self.mic.stop()
+        os._exit(0)
+
+    def _cmd_restart(self):
+        self.restart()
+
     def setup_brain(self):
         """Open setup_brain.bat in its own console: installs Claude Code if needed, then signs in."""
         bat = HERE / "setup_brain.bat"
@@ -1403,6 +1421,8 @@ def start_hud(prism: Prism, cfg: dict) -> str:
                 prism.set_mic(bool(data.get("on", not prism.mic_on)))
             elif path == "/threshold":
                 prism.set_threshold(float(data.get("value", prism.detector.thresh)))
+            elif path == "/restart":
+                threading.Thread(target=prism.restart, daemon=True).start()
             elif path == "/setup-brain":
                 prism.setup_brain()
             elif path == "/test-voice":
@@ -1493,6 +1513,7 @@ def main():
     ap.add_argument("--say", metavar="TEXT", help="test the voice and exit")
     ap.add_argument("--text", action="store_true", help="keyboard-only mode (no microphone)")
     ap.add_argument("--no-hud", action="store_true", help="don't start or open the HUD")
+    ap.add_argument("--no-hud-open", action="store_true", help="start the HUD server but don't open a new window (used by restart)")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -1508,7 +1529,7 @@ def main():
     if not args.no_hud and hud_cfg.get("enabled", True):
         try:
             prism.hud_url = start_hud(prism, hud_cfg)
-            if hud_cfg.get("open_on_start", True):
+            if hud_cfg.get("open_on_start", True) and not args.no_hud_open:
                 open_hud_window(prism.hud_url, hud_cfg.get("app_window", True))
         except Exception as e:
             log(f"[yellow]HUD unavailable:[/yellow] {e}")

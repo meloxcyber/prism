@@ -272,11 +272,11 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;
   </section>
 </div>
 <div class="ov" id="ov">
-  <div class="ovhead"><h2>COMMANDS</h2><p>Everything you can say to Prism · click a phrase to run it</p><span class="sp"></span><button class="hbtn" id="bclose">Close · Esc</button></div>
+  <div class="ovhead"><h2>COMMANDS</h2><p>Everything you can say to Prism · click a phrase to run it</p><span class="sp"></span><button class="hbtn" id="brestart" title="Pull the latest version from GitHub and restart">Restart Prism</button><button class="hbtn" id="bclose">Close · Esc</button></div>
   <div class="ovsearch"><span>&gt;</span><input id="cq" placeholder="Search commands and apps…" autocomplete="off"></div>
   <div id="ovbody"></div>
 </div>
-<div class="lost" id="lost"><div>LINK LOST<small>Prism isn't running — start PRISM.bat</small></div></div>
+<div class="lost" id="lost"><div>LINK LOST<small>Prism isn't running (or is restarting) — start PRISM.bat if this stays</small></div></div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -365,7 +365,8 @@ const SYS = [['brain','Brain'],['mic','Mic'],['voice','Voice'],['wake','Wake'],[
 async function poll(){
   try{
     const r = await fetch('/state',{cache:'no-store'}); S = await r.json(); $('lost').classList.remove('on');
-  }catch(e){ $('lost').classList.add('on'); setTimeout(poll,1000); return; }
+    if (window._wasLost) { location.reload(); return; }   // Prism restarted: load the newest HUD
+  }catch(e){ window._wasLost = true; $('lost').classList.add('on'); setTimeout(poll,1000); return; }
   const [c,g,label] = COLORS[S.state] || COLORS.booting;
   root.setProperty('--c',c); root.setProperty('--glow',g);
   $('st').textContent = label; $('ln').textContent = S.line || '';
@@ -481,6 +482,7 @@ function renderCmds(q){
   $('ovbody').innerHTML = html || '<div class="empty" style="margin-top:30px">// no command matches</div>';
 }
 $('bcmds').onclick = openCmds; $('bclose').onclick = closeCmds;
+$('brestart').onclick = () => { post('/restart'); closeCmds(); };
 $('cq').addEventListener('input', e => renderCmds(e.target.value));
 $('ovbody').onclick = e => { const el = e.target.closest('[data-say]'); if (el && el.dataset.say){ post('/cmd',{text:el.dataset.say}); closeCmds(); } };
 
