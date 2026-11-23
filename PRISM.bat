@@ -9,8 +9,18 @@ if not exist "%VENV%\Scripts\python.exe" (
   pause & exit /b 1
 )
 
+rem ---------- argument parsing: --no-update is ours, everything else goes to prism.py ----------
+set "ARGS="
+set "SKIP_UPDATE="
+:parse
+if "%~1"=="" goto :parsed
+if /i "%~1"=="--no-update" (set "SKIP_UPDATE=1") else (set ARGS=%ARGS% %1)
+shift
+goto :parse
+:parsed
+
 rem ---------- self-update from GitHub (skipped with:  PRISM.bat --no-update) ----------
-if /i "%~1"=="--no-update" (shift & goto :run)
+if defined SKIP_UPDATE goto :run
 where git >nul 2>nul || (echo [PRISM] git not found - skipping update check. & goto :run)
 
 if not exist ".git" (
@@ -35,5 +45,5 @@ goto :run
 "%VENV%\Scripts\python.exe" -m pip install -q -r requirements.txt
 
 :run
-"%VENV%\Scripts\python.exe" prism.py %*
+"%VENV%\Scripts\python.exe" prism.py %ARGS%
 if errorlevel 1 pause
