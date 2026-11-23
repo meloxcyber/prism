@@ -32,8 +32,15 @@ if not exist ".git" (
   goto :deps
 )
 
+rem Tracked files are code only (your config.json / apps.local.json are git-ignored),
+rem so if a fast-forward is blocked (line endings, a stray edit) we take GitHub's version.
+git config core.autocrlf true >nul 2>nul
 for /f %%h in ('git rev-parse HEAD 2^>nul') do set "BEFORE=%%h"
-git pull -q --ff-only origin main
+git fetch -q origin main
+git merge -q --ff-only origin/main >nul 2>nul || (
+  echo [PRISM] Syncing code files to the GitHub version...
+  git reset -q --hard origin/main
+)
 for /f %%h in ('git rev-parse HEAD 2^>nul') do set "AFTER=%%h"
 if not "%BEFORE%"=="%AFTER%" (
   echo [PRISM] Updated to %AFTER:~0,7%
