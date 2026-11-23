@@ -891,7 +891,7 @@ class Prism:
             "address": self.address,
             "state": "muted" if (self.state == "sleeping" and not self.mic_on) else self.state,
             "mic_on": self.mic_on,
-            "line": self.status_line,
+            "line": "Mic off — press Mic or M to listen again" if (self.state == "sleeping" and not self.mic_on) else self.status_line,
             "level": round(self.mic.level, 4) if self._mic_live() else 0.0,
             "threshold": self.detector.thresh,
             "noise": round(self.detector.noise, 5),
