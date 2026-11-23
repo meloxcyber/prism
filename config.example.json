@@ -2,7 +2,6 @@
   "assistant_name": "Prism",
   "address_user_as": "sir",
   "regreet_after_minutes": 60,
-
   "voice": {
     "engine": "edge",
     "edge_voice": "en-GB-RyanNeural",
@@ -10,14 +9,12 @@
     "pitch": "-2Hz",
     "fallback_sapi_voice": "Hazel"
   },
-
   "wake": {
     "clap_threshold": 0.22,
     "min_gap_ms": 150,
     "max_gap_ms": 800,
     "cooldown_s": 2.0
   },
-
   "listen": {
     "input_device": null,
     "stt_engine": "google",
@@ -28,7 +25,6 @@
     "followup_window_s": 7,
     "whisper_model": "base.en"
   },
-
   "weather": {
     "auto_locate": true,
     "city": "Midland, Texas",
@@ -36,11 +32,14 @@
     "longitude": -102.0779,
     "refresh_minutes": 15
   },
-
   "brain": {
     "claude_path": "",
     "model": "",
     "timeout_s": 90,
     "history_turns": 8
+  },
+  "sync": {
+    "apps_url": "https://prism-meloxcyber.vercel.app/apps.json",
+    "timeout_s": 4
   }
 }

@@ -13,7 +13,7 @@ you    →  "That's all."
 Prism  →  "Very good. Standing by."           (back to listening for claps)
 ```
 
-**Console (hosted on Vercel):** launcher grid, voice cheat-sheet, and the live `apps.json` the desktop app syncs from.
+**Console (hosted on Vercel):** [prism-meloxcyber.vercel.app](https://prism-meloxcyber.vercel.app) — launcher grid, voice cheat-sheet, and the live `apps.json` the desktop app syncs from.
 **Source:** [github.com/meloxcyber/prism](https://github.com/meloxcyber/prism)
 
 ## Install (once)
