@@ -36,8 +36,13 @@
   "brain": {
     "claude_path": "",
     "model": "",
-    "timeout_s": 90,
-    "history_turns": 8
+    "timeout_s": 120,
+    "history_turns": 8,
+    "tools": [
+      "WebSearch",
+      "WebFetch"
+    ],
+    "max_turns": 6
   },
   "sync": {
     "apps_url": "https://prism-virid-eight.vercel.app/apps.json",

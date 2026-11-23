@@ -69,6 +69,12 @@ Fast, offline-ish paths (no Claude round-trip):
 
 Everything else goes to `claude -p` with a system prompt that includes the time, weather, your app list and the last few turns of conversation. Claude replies as Prism in one or two sentences and can also return app keys to open ("open everything I need for a buy-in" → Buy Desk + Buy-In Board). Tools are disabled for those calls, so Prism can't edit files or run commands through Claude. A Claude round-trip takes a few seconds — that's CLI start-up, not Prism.
 
+## The brain (Claude Code)
+
+Prism thinks with **Claude Code**, signed in with your Claude account (no API key). Click **Connect brain** on the HUD, or double-click `setup_brain.bat`. It installs Claude Code with the official installer if it's missing, then opens your browser to sign in. Prism notices within seconds; the BRAIN light turns green with no restart.
+
+By default the brain can use **web search and web fetch**, so it can answer about the present (news, prices, scores, hours). It can't run commands or edit files. To widen that, set `brain.tools` in `config.json`: add `"Read","Glob","Grep"` to read files, and only add `"Bash"`/`"Write"`/`"Edit"` if you want a voice command to be able to change your PC. `brain.model` (e.g. `"haiku"`) trades depth for speed.
+
 ## Add your own apps
 
 Edit `apps.json`. Three kinds of target:

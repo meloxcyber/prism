@@ -133,6 +133,10 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .hbtn.micbtn.off:hover{background:var(--red);color:#02070d;box-shadow:0 0 18px rgba(255,77,106,.6)}
 .meter.muted::after{content:"MIC OFF";position:absolute;inset:0;display:grid;place-items:center;font:600 12px var(--mono);letter-spacing:.5em;color:var(--red);background:rgba(2,7,13,.7)}
 
+.brainbtn{margin-top:12px;width:100%;border-color:var(--amber);color:var(--amber);animation:nudge 2.4s ease-in-out infinite}
+.brainbtn:hover{background:var(--amber);color:#02070d;box-shadow:0 0 18px rgba(255,181,71,.6)}
+@keyframes nudge{50%{box-shadow:0 0 16px rgba(255,181,71,.45)}}
+
 /* link lost */
 .lost{position:fixed;inset:0;display:none;place-items:center;background:rgba(2,7,13,.85);z-index:20;font:14px var(--mono);letter-spacing:.4em;color:var(--red);text-align:center}
 .lost.on{display:grid}
@@ -164,6 +168,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;
     <div class="panel">
       <div class="ptitle">Systems <small id="sysok">—</small></div>
       <ul class="sys" id="sys"></ul>
+      <button class="hbtn brainbtn" id="bbrain" hidden>Connect brain</button>
     </div>
     <div class="panel">
       <div class="ptitle">Acoustics <span class="sw on" id="micsw" title="Microphone on/off (M)"><span id="micswl">MIC ON</span><span class="tr"></span></span></div>
@@ -339,6 +344,8 @@ async function poll(){
   let ok=0; $('sys').innerHTML = SYS.map(([k,n])=>{ const s=S.systems[k]||{}; if(s.ok)ok++;
     return `<li><span class="d ${s.ok?'':'bad'}"></span><span class="k">${n}</span><span class="v" title="${esc(s.detail)}">${esc(s.detail)}</span></li>`}).join('');
   $('sysok').textContent = `${ok}/${SYS.length} ONLINE`;
+  const b = S.systems.brain || {};
+  $('bbrain').hidden = !!b.ok || b.state === 'checking';
 
   // weather
   const m = /(-?\d+)°F,\s*(.*)/.exec(S.weather.short||'');
@@ -377,6 +384,7 @@ $('chips').onclick = e => { const k = e.target.dataset.k; if(k) post('/open',{ke
 const post = (p,b={}) => fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
 $('q').addEventListener('keydown',e=>{ if(e.key==='Enter' && e.target.value.trim()){ post('/cmd',{text:e.target.value}); e.target.value=''; }});
 $('bwake').onclick = ()=>post('/wake');
+$('bbrain').onclick = ()=>{ post('/setup-brain'); $('bbrain').textContent = 'Setup opened — approve sign-in in your browser'; };
 const toggleMic = ()=>post('/mic',{on: !(S && S.mic_on !== false)});
 $('bmic').onclick = toggleMic; $('micsw').onclick = toggleMic;
 const nudge = d => S && post('/threshold',{value: +(S.threshold + d).toFixed(2)});

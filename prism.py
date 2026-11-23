@@ -115,8 +115,12 @@ DEFAULT_CONFIG: dict = {
     "brain": {
         "claude_path": "",
         "model": "",
-        "timeout_s": 90,
+        "timeout_s": 120,
         "history_turns": 8,
+        "max_turns": 6,
+        # Claude Code tools Prism may use. Add "Read","Glob","Grep" to let it read files;
+        # "Bash"/"Write"/"Edit" would let it change your PC — only add them deliberately.
+        "tools": ["WebSearch", "WebFetch"],
     },
     "hud": {
         "enabled": True,
@@ -698,7 +702,14 @@ class Launcher:
 # Brain = Claude Code CLI (`claude -p`), using your existing login
 # --------------------------------------------------------------------------- #
 class Brain:
-    DISALLOWED = "Bash,Edit,Write,MultiEdit,NotebookEdit,Task,WebFetch,WebSearch,Read,Glob,Grep,TodoWrite"
+    """Claude Code CLI as Prism's brain (uses your Claude login, no API key).
+
+    Tools: web search/fetch are allowed by default so Prism can answer about the
+    present (news, prices, scores, opening hours). Anything that changes your
+    computer (Bash, Edit, Write…) stays blocked unless you allow it in config.json.
+    """
+
+    ALWAYS_BLOCKED = ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit", "Task", "TodoWrite", "KillShell"]
 
     def __init__(self, cfg: dict, launcher: Launcher, weather: Weather, address: str):
         self.cfg = cfg
@@ -707,25 +718,67 @@ class Brain:
         self.address = address
         self.history: deque[tuple[str, str]] = deque(maxlen=int(cfg.get("history_turns", 8)))
         self.exe = self._find_claude()
+        self.status = {"ok": False, "state": "checking", "detail": "checking…"}
+        self._lock = threading.Lock()
+        threading.Thread(target=self._health_loop, daemon=True).start()
 
+    # ---- discovery & health ------------------------------------------------
     def _find_claude(self) -> str | None:
-        if self.cfg.get("claude_path"):
+        if self.cfg.get("claude_path") and Path(self.cfg["claude_path"]).exists():
             return self.cfg["claude_path"]
-        found = shutil.which("claude")
-        if found:
-            return found
         home = Path.home()
         candidates = [
-            home / ".local" / "bin" / "claude.exe",
-            home / ".local" / "bin" / "claude",
-            Path(os.environ.get("APPDATA", "")) / "npm" / "claude.cmd",
+            home / ".local" / "bin" / ("claude.exe" if IS_WINDOWS else "claude"),  # native installer
+            Path(os.environ.get("APPDATA", "")) / "npm" / "claude.cmd",            # npm -g
             Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "claude" / "claude.exe",
-            home / "AppData" / "Roaming" / "npm" / "claude.cmd",
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links" / "claude.exe",
         ]
         for c in candidates:
-            if c.exists():
+            if str(c) and c.exists():
                 return str(c)
-        return None
+        return shutil.which("claude")
+
+    def _run(self, args: list[str], timeout: float, stdin: str | None = None) -> subprocess.CompletedProcess:
+        cmd = [self.exe] + args
+        if IS_WINDOWS and self.exe.lower().endswith((".cmd", ".bat")):
+            cmd = ["cmd.exe", "/c"] + cmd
+        env = dict(os.environ)
+        env.pop("CLAUDECODE", None)  # allow running even if Prism was launched from inside Claude Code
+        flags = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0  # type: ignore[attr-defined]
+        return subprocess.run(
+            cmd, input=stdin, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout, cwd=str(HERE), env=env, creationflags=flags,
+        )
+
+    def check(self) -> dict:
+        """Cheap health check: is Claude Code installed and signed in? (no tokens used)"""
+        self.exe = self.exe if (self.exe and Path(self.exe).exists()) else self._find_claude()
+        if not self.exe:
+            st = {"ok": False, "state": "missing", "detail": "Claude Code not installed — click Connect brain"}
+        else:
+            try:
+                r = self._run(["auth", "status", "--json"], timeout=20)
+                info = json.loads(r.stdout or "{}")
+                if info.get("loggedIn"):
+                    who = info.get("email") or info.get("account", {}).get("email") or info.get("authMethod", "")
+                    st = {"ok": True, "state": "ready", "detail": f"Claude Code · {who}".strip(" ·")}
+                else:
+                    st = {"ok": False, "state": "signed_out", "detail": "Claude Code installed · not signed in — click Connect brain"}
+            except Exception as e:
+                st = {"ok": True, "state": "unknown", "detail": f"Claude Code found ({str(e)[:60]})"}
+        if st["state"] != self.status.get("state"):
+            log(f"[{'green' if st['ok'] else 'yellow'}]brain:[/] {st['detail']}")
+        self.status = st
+        return st
+
+    def _health_loop(self):
+        while True:
+            try:
+                self.check()
+            except Exception as e:
+                self.status = {"ok": False, "state": "error", "detail": str(e)[:120]}
+            # re-check often until ready (e.g. while you're signing in), then rarely
+            time.sleep(8 if not self.status.get("ok") else 300)
 
     def _system(self) -> str:
         now = datetime.now().strftime("%A %d %B %Y, %I:%M %p").lstrip("0")
@@ -733,7 +786,9 @@ class Brain:
         return f"""You are PRISM, a calm, understated British voice assistant running on {self.address}'s Windows PC.
 Everything you write will be spoken aloud by a text-to-speech voice, so:
 - Reply in British English, warm but brief: one or two short sentences. No lists, no markdown, no emojis, no URLs.
-- Never use tools. Answer from what you know and the context below.
+- You may use WebSearch/WebFetch when the answer depends on current information (news, prices, scores,
+  opening hours, anything recent). Keep it quick: one or two searches, then answer. Otherwise answer directly.
+- Never try to edit files or run commands.
 - If asked to open, launch, show, or pull up one of the registered apps, include its key in "open".
 - If the user is clearly ending the conversation (goodbye, that's all, go to sleep, thanks that's it), set "sleep": true.
 
@@ -752,26 +807,29 @@ Recent conversation:
 """
 
     def ask(self, text: str) -> dict:
-        if not self.exe:
-            return {"say": "I can't find the Claude Code command on this machine. Install Claude Code, run claude once to sign in, and start me again.", "open": [], "sleep": False}
+        if not self.exe or self.status.get("state") in ("missing", "signed_out"):
+            st = self.check()
+            if st["state"] == "missing":
+                return {"say": "My brain isn't installed yet. Press Connect brain on the HUD, or run setup brain, and I'll be fully operational.", "open": [], "sleep": False}
+            if st["state"] == "signed_out":
+                return {"say": "Claude Code is installed but not signed in. Press Connect brain on the HUD to sign in.", "open": [], "sleep": False}
+
+        tools = [t for t in self.cfg.get("tools", ["WebSearch", "WebFetch"]) if t]
+        blocked = [t for t in self.ALWAYS_BLOCKED if t not in tools]
+        args = ["-p", "Respond to the spoken request in the piped input, as PRISM, with the JSON object described.",
+                "--output-format", "json", "--max-turns", str(int(self.cfg.get("max_turns", 6)))]
+        if tools:
+            args += ["--allowedTools", ",".join(tools)]
+        if blocked:
+            args += ["--disallowedTools", ",".join(blocked)]
+        if self.cfg.get("model"):
+            args += ["--model", self.cfg["model"]]
 
         prompt = self._system() + f"\nUser (spoken): {text}\n"
-        cmd = [self.exe, "-p", "Respond to the spoken request in the piped input, as PRISM, with the JSON object described.",
-               "--output-format", "json", "--max-turns", "1", "--disallowedTools", self.DISALLOWED]
-        if self.cfg.get("model"):
-            cmd += ["--model", self.cfg["model"]]
-        if IS_WINDOWS and self.exe.lower().endswith((".cmd", ".bat")):
-            cmd = ["cmd.exe", "/c"] + cmd
-        flags = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0  # type: ignore[attr-defined]
-
-        env = dict(os.environ)
-        env.pop("CLAUDECODE", None)  # allow running even if launched from inside Claude Code
         try:
             t0 = time.monotonic()
-            proc = subprocess.run(
-                cmd, input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=float(self.cfg.get("timeout_s", 90)), cwd=str(HERE), env=env, creationflags=flags,
-            )
+            with self._lock:
+                proc = self._run(args, timeout=float(self.cfg.get("timeout_s", 90)), stdin=prompt)
             log(f"[dim]brain responded in {time.monotonic() - t0:.1f}s[/dim]")
         except subprocess.TimeoutExpired:
             return {"say": "I'm afraid that took too long. Shall we try again?", "open": [], "sleep": False}
@@ -784,7 +842,7 @@ Recent conversation:
             tail = err[-1] if err else "unknown error"
             log(f"[red]claude exited {proc.returncode}:[/red] {tail}")
             if "login" in tail.lower() or "auth" in tail.lower() or "api key" in tail.lower():
-                return {"say": "My brain isn't signed in. Please open a terminal, run claude, and log in.", "open": [], "sleep": False}
+                return {"say": "My brain isn't signed in. Press Connect brain on the HUD to sign in.", "open": [], "sleep": False}
             return {"say": "Something went wrong talking to Claude. Check the console for details.", "open": [], "sleep": False}
 
         result_text = raw
@@ -792,11 +850,13 @@ Recent conversation:
             outer = json.loads(raw)
             if isinstance(outer, dict):
                 result_text = str(outer.get("result", raw))
+                if outer.get("subtype") == "error_max_turns" and not result_text.strip():
+                    return {"say": "That needed more digging than I can do in one go. Could you narrow it down?", "open": [], "sleep": False}
                 if outer.get("is_error"):
                     log(f"[red]claude error:[/red] {result_text}")
                     low = result_text.lower()
                     if "auth" in low or "login" in low or "api key" in low:
-                        say = "My brain isn't signed in. Please open a terminal, run claude, and log in."
+                        say = "My brain isn't signed in. Press Connect brain on the HUD to sign in."
                     elif "rate" in low or "limit" in low or "usage" in low:
                         say = "I've hit my usage limit for the moment. Let's try again a little later."
                     else:
@@ -902,7 +962,8 @@ class Prism:
             "transcript": list(self.transcript),
             "weather": {"short": w.short(), "city": w.city, "summary": w.summary() if w.data else ""},
             "systems": {
-                "brain": {"ok": bool(self.brain.exe), "detail": self.brain.exe or "Claude Code CLI not found"},
+                "brain": {"ok": bool(self.brain.status.get("ok")), "detail": self.brain.status.get("detail", ""),
+                          "state": self.brain.status.get("state", "")},
                 "mic": {"ok": self._mic_live(), "detail": ((self.mic.name if self.mic_on else "OFF · " + self.mic.name) if self.mic else (self.mic_error or "disabled"))},
                 "voice": {
                     "ok": self.voice.last_engine != "none",
@@ -943,6 +1004,15 @@ class Prism:
 
     def _mic_live(self) -> bool:
         return self.mic is not None and self.mic_on
+
+    def setup_brain(self):
+        """Open setup_brain.bat in its own console: installs Claude Code if needed, then signs in."""
+        bat = HERE / "setup_brain.bat"
+        if IS_WINDOWS and bat.exists():
+            subprocess.Popen(["cmd.exe", "/c", "start", "PRISM brain setup", "cmd.exe", "/c", str(bat)], cwd=str(HERE))
+            self.add_line("prism", "Opening brain setup. Approve the sign-in in your browser when it appears.")
+        else:
+            self.add_line("prism", "Run: claude auth login")
 
     def test_voice(self):
         self._speak(f"All systems operational, {self.address}. Voice link confirmed.")
@@ -1025,6 +1095,7 @@ class Prism:
 
         self.set_state("thinking", text)
         reply = self.brain.ask(text)
+        self.set_state("thinking", "")
         for key in reply.get("open", []):
             app = self.launcher.by_key(key)
             if app:
@@ -1037,10 +1108,8 @@ class Prism:
         log(f"[bold magenta]{self.name} online.[/bold magenta]  Clap twice to wake — or press Enter / use the HUD.")
         if self.hud_url:
             log(f"[cyan]HUD:[/cyan] {self.hud_url}")
-        if self.brain.exe:
-            log(f"[dim]brain: {self.brain.exe}[/dim]")
-        else:
-            log("[red]Claude Code CLI not found.[/red] Set brain.claude_path in config.json or install Claude Code.")
+        if not self.brain.exe:
+            log("[yellow]Claude Code not installed yet[/yellow] — press Connect brain on the HUD (or run setup_brain.bat).")
         threading.Thread(target=self._keyboard_thread, daemon=True).start()
         if self.mic:
             self.mic.start()
@@ -1223,6 +1292,8 @@ def start_hud(prism: Prism, cfg: dict) -> str:
                 prism.set_mic(bool(data.get("on", not prism.mic_on)))
             elif path == "/threshold":
                 prism.set_threshold(float(data.get("value", prism.detector.thresh)))
+            elif path == "/setup-brain":
+                prism.setup_brain()
             elif path == "/test-voice":
                 threading.Thread(target=prism.test_voice, daemon=True).start()
             elif path == "/open":
