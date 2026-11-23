@@ -117,12 +117,30 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;
 .chip:hover{border-color:var(--c);color:#02070d;background:var(--c)}
 .chip.vercel{border-color:rgba(255,255,255,.35);color:#fff}
 
+/* mic switch + sensitivity */
+.sw{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font:600 10.5px var(--mono);letter-spacing:.22em;color:var(--dim);user-select:none}
+.sw .tr{width:34px;height:16px;border:1px solid var(--line);position:relative;transition:all .15s}
+.sw .tr::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;background:var(--dim);transition:all .15s}
+.sw.on{color:var(--green)}
+.sw.on .tr{border-color:var(--green);box-shadow:0 0 10px rgba(70,240,166,.35)}
+.sw.on .tr::after{left:20px;background:var(--green);box-shadow:0 0 8px var(--green)}
+.sw.off{color:var(--red)} .sw.off .tr{border-color:var(--red)} .sw.off .tr::after{background:var(--red)}
+.sens{display:inline-flex;align-items:center;gap:6px}
+.sens button{width:22px;height:22px;background:transparent;border:1px solid var(--line);color:var(--c);font:14px/1 var(--mono);cursor:pointer;padding:0}
+.sens button:hover{background:var(--c);color:#02070d}
+.sens b{color:#e9fbff;min-width:34px;text-align:center}
+.hbtn.micbtn.off{border-color:var(--red);color:var(--red)}
+.hbtn.micbtn.off:hover{background:var(--red);color:#02070d;box-shadow:0 0 18px rgba(255,77,106,.6)}
+.meter.muted::after{content:"MIC OFF";position:absolute;inset:0;display:grid;place-items:center;font:600 12px var(--mono);letter-spacing:.5em;color:var(--red);background:rgba(2,7,13,.7)}
+
 /* link lost */
 .lost{position:fixed;inset:0;display:none;place-items:center;background:rgba(2,7,13,.85);z-index:20;font:14px var(--mono);letter-spacing:.4em;color:var(--red);text-align:center}
 .lost.on{display:grid}
 .lost small{display:block;margin-top:12px;color:var(--dim);letter-spacing:.15em}
 
-@media (max-width:1100px){.app{grid-template-columns:260px 1fr 280px}}
+@media (max-width:1320px){.app{grid-template-columns:265px 1fr 300px}.topstats .stat:nth-child(1),.topstats .stat:nth-child(2){display:none}.brand p{display:none}}
+@media (max-height:860px){.weather .sum{display:none}.weather .big{font-size:36px}.meter{height:90px}}
+@media (max-width:1050px){.app{grid-template-columns:235px 1fr 250px;gap:10px;padding:10px}.reactor{width:min(52vh,420px)}}
 </style>
 </head>
 <body>
@@ -148,9 +166,13 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;
       <ul class="sys" id="sys"></ul>
     </div>
     <div class="panel">
-      <div class="ptitle">Acoustic sensor <small id="peak">0.00</small></div>
-      <div class="meter"><canvas id="scope"></canvas><div class="thr" id="thr"><span>CLAP</span></div></div>
-      <div class="claprow"><span>CLAPS <b id="claps" style="color:#e9fbff">0</b></span><span class="clapflag" id="clapflag">CLAP</span></div>
+      <div class="ptitle">Acoustics <span class="sw on" id="micsw" title="Microphone on/off (M)"><span id="micswl">MIC ON</span><span class="tr"></span></span></div>
+      <div class="meter" id="meter"><canvas id="scope"></canvas><div class="thr" id="thr"><span>CLAP</span></div></div>
+      <div class="claprow"><span>CLAPS <b id="claps" style="color:#e9fbff">0</b> · <b id="peak" style="color:#e9fbff">0.00</b></span><span class="clapflag" id="clapflag">CLAP</span></div>
+      <div class="claprow" title="Raise it if background noise counts as claps; lower it if your claps are missed">
+        <span>CLAP THRESHOLD</span>
+        <span class="sens"><button id="tdown" aria-label="More sensitive">−</button><b id="tval">0.22</b><button id="tup" aria-label="Less sensitive">+</button></span>
+      </div>
     </div>
     <div class="panel weather" style="flex:1">
       <div class="ptitle">Atmospherics</div>
@@ -198,6 +220,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;
     <div class="panel cmd">
       <div class="cmdline"><span>&gt;</span><input id="q" placeholder="Type a command — or clap twice" autocomplete="off" spellcheck="false"></div>
       <div class="btns">
+        <button class="hbtn micbtn" id="bmic">Mic · On</button>
         <button class="hbtn" id="bwake">Wake</button>
         <button class="hbtn" id="bvoice">Test voice</button>
         <button class="hbtn" id="bweather">Weather</button>
@@ -219,8 +242,9 @@ const COLORS = {
   listening:['#37e4ff','rgba(55,228,255,.75)','LISTENING'],
   thinking: ['#ffb547','rgba(255,181,71,.6)','PROCESSING'],
   speaking: ['#bff7ff','rgba(150,240,255,.8)','SPEAKING'],
+  muted:    ['#ff4d6a','rgba(255,77,106,.45)','MIC OFF'],
 };
-const SPEED = {booting:1, sleeping:.35, listening:1.6, thinking:3.2, speaking:1.2};
+const SPEED = {muted:.15, booting:1, sleeping:.35, listening:1.6, thinking:3.2, speaking:1.2};
 const root = document.documentElement.style;
 let S = null, lastLogLen = -1, lastClaps = null, tab = 'vercel', history = new Array(160).fill(0), micHist = new Array(160).fill(0), t0 = performance.now();
 
@@ -303,6 +327,11 @@ async function poll(){
   $('st').textContent = label; $('ln').textContent = S.line || '';
   $('uptime').textContent = fmtUp(S.uptime); $('wakes').textContent = S.wakes;
   $('claps').textContent = S.claps;
+  $('tval').textContent = S.threshold.toFixed(2);
+  const on = S.mic_on !== false;
+  $('micsw').className = 'sw ' + (on ? 'on' : 'off'); $('micswl').textContent = on ? 'MIC ON' : 'MIC OFF';
+  $('bmic').className = 'hbtn micbtn' + (on ? '' : ' off'); $('bmic').textContent = on ? 'Mic · On' : 'Mic · Off';
+  $('meter').classList.toggle('muted', !on);
   if (lastClaps !== null && S.claps > lastClaps){ const f=$('clapflag'); f.classList.add('on'); setTimeout(()=>f.classList.remove('on'),450); }
   lastClaps = S.claps;
 
@@ -348,9 +377,17 @@ $('chips').onclick = e => { const k = e.target.dataset.k; if(k) post('/open',{ke
 const post = (p,b={}) => fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
 $('q').addEventListener('keydown',e=>{ if(e.key==='Enter' && e.target.value.trim()){ post('/cmd',{text:e.target.value}); e.target.value=''; }});
 $('bwake').onclick = ()=>post('/wake');
+const toggleMic = ()=>post('/mic',{on: !(S && S.mic_on !== false)});
+$('bmic').onclick = toggleMic; $('micsw').onclick = toggleMic;
+const nudge = d => S && post('/threshold',{value: +(S.threshold + d).toFixed(2)});
+$('tup').onclick = ()=>nudge(+0.02); $('tdown').onclick = ()=>nudge(-0.02);
 $('bvoice').onclick = ()=>post('/test-voice');
 $('bweather').onclick = ()=>post('/cmd',{text:"what's the weather"});
-document.addEventListener('keydown',e=>{ if(e.key==='/' && document.activeElement!==$('q')){e.preventDefault();$('q').focus();} });
+document.addEventListener('keydown',e=>{
+  if (document.activeElement===$('q')) return;
+  if (e.key==='/'){ e.preventDefault(); $('q').focus(); }
+  if (e.key==='m' || e.key==='M'){ e.preventDefault(); toggleMic(); }
+});
 
 /* --- clock --- */
 function tick(){ const d=new Date();

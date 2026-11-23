@@ -23,7 +23,8 @@
     "silence_end_s": 1.1,
     "no_speech_timeout_s": 5,
     "followup_window_s": 7,
-    "whisper_model": "base.en"
+    "whisper_model": "base.en",
+    "start_muted": false
   },
   "weather": {
     "auto_locate": true,
@@ -39,7 +40,7 @@
     "history_turns": 8
   },
   "sync": {
-    "apps_url": "https://prism-meloxcyber.vercel.app/apps.json",
+    "apps_url": "https://prism-virid-eight.vercel.app/apps.json",
     "timeout_s": 4
   },
   "hud": {

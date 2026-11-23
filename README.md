@@ -19,7 +19,7 @@ Prism  →  "Very good. Standing by."           (back to listening for claps)
 ## Install (once)
 
 1. **Python 3.10+** with "Add to PATH" ticked, and **Git for Windows**.
-2. **Claude Code** installed; run `claude` once in a terminal and sign in.
+2. **Claude Code** installed and signed in. `setup_brain.bat` installs it and walks you through sign-in.
 3. `git clone https://github.com/meloxcyber/prism` (or use the folder you already have) and double-click `install.bat`.
 
 Python packages go in `%LOCALAPPDATA%\PRISM\venv`, not in the repo/OneDrive folder.
@@ -38,6 +38,8 @@ When PRISM starts it opens a JARVIS-style HUD in a chromeless Edge window (`http
 - **Systems**: brain (Claude Code), mic, voice, wake detector, hearing, weather. A green or red dot for each.
 - **Acoustic sensor**: live mic scope with the clap threshold line. Every clap flashes **CLAP**; a double clap wakes Prism. Use it to tune `wake.clap_threshold`.
 - **Comms log**: everything said, both ways.
+- **Mic on/off**: the switch on the Acoustics panel, the **Mic** button, or press **M**. Off means the audio stream is stopped completely and Windows' mic indicator goes dark; wake Prism from the HUD or by typing instead. You can also say *"mute the mic"*.
+- **Clap threshold − / +**: raise it if background noise counts as claps, lower it if your claps get missed. It saves to your `config.json`.
 - **Command line + buttons**: type a command, **Wake**, **Test voice**, **Weather**.
 - **Launch bar**: Vercel projects and Claude artifacts, one click each.
 
