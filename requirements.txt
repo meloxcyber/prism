@@ -5,7 +5,6 @@ edge-tts>=6.1
 # pygame is no longer needed on Windows (native playback)
 pyttsx3>=2.90
 rich>=13.0
-# Optional: fully offline speech-to-text. Then set listen.stt_engine = "whisper" in config.json.
-# faster-whisper>=1.0
+faster-whisper>=1.0  # local speech-to-text (much better than the free Google recogniser)
 pystray>=0.19  # tray icon
 Pillow>=10.0  # tray icon image

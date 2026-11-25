@@ -69,6 +69,10 @@ Fast, offline-ish paths (no Claude round-trip):
 
 Everything else goes to `claude -p` with a system prompt that includes the time, weather, your app list and the last few turns of conversation. Claude replies as Prism in one or two sentences and can also return app keys to open ("open everything I need for a buy-in" → Buy Desk + Buy-In Board). Tools are disabled for those calls, so Prism can't edit files or run commands through Claude. A Claude round-trip takes a few seconds — that's CLI start-up, not Prism.
 
+## Hearing (speech-to-text)
+
+Prism transcribes with **Whisper** (`small.en`) running locally on your PC, primed with your vocabulary: app names, store terms, brands. That's why it hears "Nexus", "Cost Fixer" and "ConsignR" correctly. Audio is cleaned and boosted before transcription, and near-misses ("cost fixture", "next us", "mist sales") are snapped to the right term. Every phrase is logged to `heard.log` (raw and corrected) so mishearings can be tuned. The first launch downloads the model (~0.5 GB, once). `listen.whisper_model`: `base.en` is faster, `medium.en` more accurate. `listen.stt_engine: "google"` switches back to the old recogniser.
+
 ## Store tasks
 
 | Say | Prism does |

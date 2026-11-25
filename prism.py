@@ -99,13 +99,13 @@ DEFAULT_CONFIG: dict = {
     },
     "listen": {
         "input_device": None,
-        "stt_engine": "google",
+        "stt_engine": "whisper",   # local, primed with your vocabulary; "google" = old free online recogniser
         "language": "en-US",
-        "max_seconds": 10,
-        "silence_end_s": 1.1,
+        "max_seconds": 12,
+        "silence_end_s": 1.4,      # pause length that ends a phrase (longer = fewer cut-offs)
         "no_speech_timeout_s": 5,
         "followup_window_s": 7,
-        "whisper_model": "base.en",
+        "whisper_model": "small.en",  # "base.en" = faster/less accurate, "medium.en" = slower/more accurate
     },
     "weather": {
         "auto_locate": True,
@@ -360,7 +360,7 @@ class ClapDetector:
 # --------------------------------------------------------------------------- #
 def record_utterance(mic: Mic, cfg: dict, noise_rms: float, should_abort=None) -> np.ndarray | None:
     """Capture one spoken phrase. Returns None on silence, timeout, or if should_abort() fires."""
-    speech_thresh = max(0.012, noise_rms * 4.0)
+    speech_thresh = max(0.008, noise_rms * 3.0)  # quiet laptop mics: catch soft starts and endings
     frames: list[np.ndarray] = []
     started = False
     start_idx = 0
@@ -397,38 +397,163 @@ def record_utterance(mic: Mic, cfg: dict, noise_rms: float, should_abort=None) -
     return np.concatenate(frames[start_idx:])
 
 
+BASE_VOCAB = [
+    "Prism", "Nexus", "Cost Fixer", "ConsignR", "StockX", "eBay", "liquidation", "liquidation tool",
+    "missed sales", "missed sales report", "store tasks", "Handful of Hype", "HOH", "Midland",
+    "Seller Hub", "pre-order", "SKU", "Yeezy", "Jordan", "Dunk", "Sp5der", "Supreme", "Pokémon", "Yu-Gi-Oh",
+    "HUD", "mic", "restock", "drop calendar", "buy desk",
+]
+
+
+def prepare_audio(audio: np.ndarray) -> np.ndarray:
+    """int16 mic audio -> clean float32 for recognition: remove DC/rumble, normalise quiet laptop mics."""
+    x = audio.astype(np.float32) / 32768.0
+    if x.size == 0:
+        return x
+    x = x - float(np.mean(x))
+    # gentle high-pass (~80 Hz) to cut fan/desk rumble
+    alpha = 0.97
+    y = np.empty_like(x)
+    prev_x = prev_y = 0.0
+    for i in range(x.size):  # 16k samples/s * few seconds — fast enough, no scipy needed
+        prev_y = alpha * (prev_y + x[i] - prev_x)
+        prev_x = x[i]
+        y[i] = prev_y
+    peak = float(np.max(np.abs(y))) or 1.0
+    gain = min(20.0, 0.9 / peak)  # bring quiet speech up to a healthy level, never more than 20x
+    return np.clip(y * gain, -1.0, 1.0)
+
+
 class Transcriber:
-    def __init__(self, cfg: dict):
+    """Speech-to-text.
+
+    Default: Whisper running locally (faster-whisper), primed with your vocabulary so it
+    hears "Nexus", "Cost Fixer", "ConsignR"… correctly. Falls back to Google's free
+    recogniser if Whisper isn't available. Everything heard is logged to heard.log.
+    """
+
+    def __init__(self, cfg: dict, vocab: list[str] | None = None):
         self.cfg = cfg
-        self.engine = cfg.get("stt_engine", "google")
+        self.engine = cfg.get("stt_engine", "whisper")
+        self.vocab = list(dict.fromkeys(BASE_VOCAB + (vocab or [])))
         self._whisper = None
+        self.status = "loading" if self.engine == "whisper" else self.engine
+        self.last_raw = ""
+        if self.engine == "whisper":
+            threading.Thread(target=self._load_whisper, daemon=True).start()
+
+    # -- engines ------------------------------------------------------------
+    def _load_whisper(self):
+        try:
+            from faster_whisper import WhisperModel
+
+            name = self.cfg.get("whisper_model", "small.en")
+            t0 = time.monotonic()
+            self.status = f"whisper {name} · downloading/loading"
+            self._whisper = WhisperModel(name, device="cpu", compute_type="int8")
+            self.status = f"whisper {name}"
+            log(f"[dim]hearing: whisper {name} ready in {time.monotonic() - t0:.0f}s[/dim]")
+        except Exception as e:
+            self._whisper = None
+            self.status = "google (whisper unavailable)"
+            log(f"[yellow]Whisper unavailable ({str(e)[:120]}); using Google speech.[/yellow]")
+
+    def _prompt(self) -> str:
+        words = ", ".join(self.vocab)
+        return f"Voice commands for a sneaker and trading card store assistant: {words}."[:900]
 
     def transcribe(self, audio: np.ndarray) -> str | None:
+        clean = prepare_audio(audio)
+        text = None
         if self.engine == "whisper":
-            return self._whisper_tx(audio)
-        return self._google_tx(audio)
+            # wait briefly if the model is still loading on first use
+            for _ in range(40):
+                if self._whisper is not None or not self.status.startswith("whisper") and self.status != "loading":
+                    break
+                time.sleep(0.25)
+            if self._whisper is not None:
+                text = self._whisper_tx(clean)
+            else:
+                text = self._google_tx(clean)
+        else:
+            text = self._google_tx(clean)
+        self.last_raw = text or ""
+        fixed = self.correct(text) if text else None
+        self._log_heard(text, fixed)
+        return fixed
 
-    def _google_tx(self, audio: np.ndarray) -> str | None:
+    def _whisper_tx(self, clean: np.ndarray) -> str | None:
+        segments, _ = self._whisper.transcribe(
+            clean, language="en", beam_size=5, vad_filter=True,
+            initial_prompt=self._prompt(), condition_on_previous_text=False,
+            no_speech_threshold=0.6, log_prob_threshold=-1.0,
+        )
+        text = " ".join(s.text for s in segments).strip()
+        # Whisper sometimes returns the prompt or filler on near-silence
+        if not text or text.lower().startswith("voice commands for") or text.strip(". ").lower() in ("you", "thank you", "thanks for watching"):
+            return None
+        return text
+
+    def _google_tx(self, clean: np.ndarray) -> str | None:
         import speech_recognition as sr
 
-        r = sr.Recognizer()
-        data = sr.AudioData(audio.tobytes(), SAMPLE_RATE, 2)
+        pcm = (clean * 32767).astype(np.int16).tobytes()
+        data = sr.AudioData(pcm, SAMPLE_RATE, 2)
         try:
-            return r.recognize_google(data, language=self.cfg.get("language", "en-US"))
+            return sr.Recognizer().recognize_google(data, language=self.cfg.get("language", "en-US"))
         except sr.UnknownValueError:
             return None
         except sr.RequestError as e:
             log(f"[red]Speech service error:[/red] {e}")
             return None
 
-    def _whisper_tx(self, audio: np.ndarray) -> str | None:
-        if self._whisper is None:
-            from faster_whisper import WhisperModel
+    # -- vocabulary correction ----------------------------------------------
+    MANUAL_FIXES = {
+        r"\bcost fix(ture|tures|xer|er's|ers)\b": "cost fixer",
+        r"\bcoast fixer\b": "cost fixer",
+        r"\bnext us\b|\bnexis\b|\bnexxus\b|\bnexus's\b": "nexus",
+        r"\bstock ?x\b|\bstocks x\b": "StockX",
+        r"\bconsign(er|or|ar|r)\b": "ConsignR",
+        r"\bprison\b|\bprisma\b|\bprizm\b|\bprisim\b": "Prism",
+        r"\be ?bay\b": "eBay",
+        r"\bmist sales\b|\bmissed sails\b|\bmist sails\b|\bmissed cells\b|\bmust sales\b": "missed sales",
+        r"\bliquid nation\b|\bliquidity\b|\bliquidations\b": "liquidation",
+        r"\bthe hood\b|\bthe hut\b|\bthe hug\b": "the HUD",
+    }
 
-            self._whisper = WhisperModel(self.cfg.get("whisper_model", "base.en"), compute_type="int8")
-        segments, _ = self._whisper.transcribe(audio.astype(np.float32) / 32768.0, language="en", vad_filter=True)
-        text = " ".join(s.text for s in segments).strip()
-        return text or None
+    STOP = {"the", "my", "a", "an", "to", "and", "of", "for", "on", "in", "up", "me", "it", "is", "this", "that"}
+
+    def correct(self, text: str) -> str:
+        out = text
+        for pat, rep in self.MANUAL_FIXES.items():
+            out = re.sub(pat, rep, out, flags=re.I)
+        # fuzzy: snap near-misses of multi-word vocab ("cost fixture" -> "cost fixer")
+        words = out.split()
+        low = [w.lower().strip(".,!?") for w in words]
+        for term in sorted(self.vocab, key=len, reverse=True):
+            tw = term.lower().split()
+            n = len(tw)
+            if len(term) < 6:
+                continue
+            i = 0
+            while i + n <= len(low):
+                cand = " ".join(low[i:i + n])
+                edge_stop = low[i] in self.STOP or low[i + n - 1] in self.STOP
+                if (not edge_stop and cand != term.lower()
+                        and difflib.SequenceMatcher(None, cand, term.lower()).ratio() >= 0.86):
+                    words[i:i + n] = [term]
+                    low[i:i + n] = [term.lower()]
+                    continue
+                i += 1
+        return " ".join(words)
+
+    def _log_heard(self, raw, fixed):
+        try:
+            with open(HERE / "heard.log", "a", encoding="utf-8") as f:
+                stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"{stamp}\t{self.status}\traw={raw!r}\tfinal={fixed!r}\n")
+        except Exception:
+            pass
 
 
 # --------------------------------------------------------------------------- #
@@ -953,7 +1078,11 @@ class Prism:
         self.commands = Commands()
         from store_tasks import StoreTasks
         self.store = StoreTasks(cfg.get("store", {}), self.launcher, HERE, log)
-        self.transcriber = Transcriber(cfg["listen"])
+        app_words = []
+        for a in self.launcher.apps:
+            app_words.append(a.get("name", ""))
+            app_words += a.get("aliases", [])[:2]
+        self.transcriber = Transcriber(cfg["listen"], [w for w in app_words if w])
         self.detector = ClapDetector(cfg["wake"])
         self.mic: Mic | None = None
         self.mic_error = ""
@@ -1018,7 +1147,7 @@ class Prism:
                 },
                 "weather": {"ok": w.data is not None, "detail": w.city or "locating"},
                 "wake": {"ok": self._mic_live(), "detail": f'double clap · threshold {self.detector.thresh}' if self.mic_on else "mic off · use HUD / Enter"},
-                "stt": {"ok": True, "detail": self.cfg["listen"].get("stt_engine", "google")},
+                "stt": {"ok": "unavailable" not in self.transcriber.status, "detail": self.transcriber.status},
             },
             "apps": [
                 {"key": a["key"], "name": a.get("name", a["key"]), "section": a.get("section", "other"), "url": a.get("url", "")}

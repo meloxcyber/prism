@@ -17,13 +17,13 @@
   },
   "listen": {
     "input_device": null,
-    "stt_engine": "google",
+    "stt_engine": "whisper",
     "language": "en-US",
-    "max_seconds": 10,
-    "silence_end_s": 1.1,
+    "max_seconds": 12,
+    "silence_end_s": 1.4,
     "no_speech_timeout_s": 5,
     "followup_window_s": 7,
-    "whisper_model": "base.en",
+    "whisper_model": "small.en",
     "start_muted": false
   },
   "weather": {
