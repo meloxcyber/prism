@@ -128,7 +128,9 @@ DEFAULT_CONFIG: dict = {
         "enabled": True,
         "port": 7777,
         "open_on_start": True,
-        "app_window": True,  # chromeless Edge/Chrome window
+        "app_window": True,  # chromeless Edge/Chrome window with its own taskbar button
+        "tray": True,        # PRISM icon by the clock: click = show HUD, right-click = menu
+        "hotkey": True,      # Ctrl+Alt+P brings the HUD back from anywhere
     },
     "store": {
         # Handful of Hype store tasks. Put the two passwords in your local config.json
@@ -1064,6 +1066,10 @@ class Prism:
             self.mic.stop()
         os._exit(0)
 
+    def _cmd_show_hud(self):
+        show_hud(self.hud_url)
+        self._speak("Here I am.")
+
     def _cmd_restart(self):
         self.restart()
 
@@ -1421,6 +1427,8 @@ def start_hud(prism: Prism, cfg: dict) -> str:
                 prism.set_mic(bool(data.get("on", not prism.mic_on)))
             elif path == "/threshold":
                 prism.set_threshold(float(data.get("value", prism.detector.thresh)))
+            elif path == "/show":
+                show_hud(prism.hud_url)
             elif path == "/restart":
                 threading.Thread(target=prism.restart, daemon=True).start()
             elif path == "/setup-brain":
@@ -1449,21 +1457,154 @@ def start_hud(prism: Prism, cfg: dict) -> str:
     return f"http://127.0.0.1:{server.server_address[1]}/"
 
 
+HUD_TITLE = "PRISM"
+
+
+def _hud_browser() -> str | None:
+    pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+    pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    local = os.environ.get("LOCALAPPDATA", "")
+    for exe in (
+        rf"{pf86}\Microsoft\Edge\Application\msedge.exe",
+        rf"{pf}\Microsoft\Edge\Application\msedge.exe",
+        rf"{pf}\Google\Chrome\Application\chrome.exe",
+        rf"{local}\Google\Chrome\Application\chrome.exe",
+    ):
+        if exe and os.path.exists(exe):
+            return exe
+    return None
+
+
 def open_hud_window(url: str, app_window: bool = True) -> None:
-    if IS_WINDOWS and app_window:
-        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
-        pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-        local = os.environ.get("LOCALAPPDATA", "")
-        for exe in (
-            rf"{pf86}\Microsoft\Edge\Application\msedge.exe",
-            rf"{pf}\Microsoft\Edge\Application\msedge.exe",
-            rf"{pf}\Google\Chrome\Application\chrome.exe",
-            rf"{local}\Google\Chrome\Application\chrome.exe",
-        ):
-            if exe and os.path.exists(exe):
-                subprocess.Popen([exe, f"--app={url}", "--window-size=1440,900"])
-                return
+    """Open the HUD as its own app window.
+
+    It uses a dedicated browser profile so Windows gives it its own taskbar button
+    (otherwise it's grouped under your normal Edge icon and 'vanishes' when minimised).
+    """
+    exe = _hud_browser() if (IS_WINDOWS and app_window) else None
+    if exe:
+        profile = Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "PRISM" / "hud-profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen([exe, f"--app={url}", f"--user-data-dir={profile}", "--window-size=1440,900",
+                          "--no-first-run", "--no-default-browser-check", "--disable-features=msEdgeSidebarV2"])
+        return
     webbrowser.open(url)
+
+
+def _find_hud_hwnds() -> list[int]:
+    """Top-level browser windows titled PRISM (the HUD), visible or minimised."""
+    if not IS_WINDOWS:
+        return []
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+    found: list[int] = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(hwnd, _):
+        if not user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
+            return True
+        buf = ctypes.create_unicode_buffer(256)
+        user32.GetWindowTextW(hwnd, buf, 256)
+        cls = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, cls, 256)
+        if buf.value.strip() == HUD_TITLE and cls.value.startswith("Chrome_WidgetWin"):
+            found.append(hwnd)
+        return True
+
+    user32.EnumWindows(cb, 0)
+    return found
+
+
+def show_hud(url: str) -> None:
+    """Bring the HUD back: restore + focus it if it exists, otherwise open a new one."""
+    hwnds = _find_hud_hwnds()
+    if not hwnds:
+        open_hud_window(url)
+        return
+    import ctypes
+
+    user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+    for h in hwnds[:1]:
+        user32.ShowWindow(h, 9)  # SW_RESTORE
+        user32.SetForegroundWindow(h)
+
+
+class DesktopShell:
+    """Ways back to the HUD: a tray icon (click = show HUD) and a global hotkey (Ctrl+Alt+P)."""
+
+    def __init__(self, prism: "Prism", cfg: dict):
+        self.prism = prism
+        self.cfg = cfg
+        self.icon = None
+
+    def start(self):
+        if not IS_WINDOWS:
+            return
+        if self.cfg.get("hotkey", True):
+            threading.Thread(target=self._hotkey_loop, daemon=True).start()
+        if self.cfg.get("tray", True):
+            threading.Thread(target=self._tray, daemon=True).start()
+
+    def show(self):
+        if self.prism.hud_url:
+            show_hud(self.prism.hud_url)
+
+    # -- Ctrl+Alt+P -------------------------------------------------------
+    def _hotkey_loop(self):
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, WM_HOTKEY = 0x1, 0x2, 0x4000, 0x0312
+        if not user32.RegisterHotKey(None, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, ord("P")):
+            log("[yellow]Ctrl+Alt+P is taken by another app — use the tray icon instead.[/yellow]")
+            return
+        log("[dim]hotkey: Ctrl+Alt+P shows the HUD[/dim]")
+        msg = wintypes.MSG()
+        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
+            if msg.message == WM_HOTKEY:
+                self.show()
+
+    # -- tray icon ----------------------------------------------------------
+    @staticmethod
+    def _icon_image():
+        from PIL import Image, ImageDraw
+
+        img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.ellipse((3, 3, 61, 61), outline=(55, 228, 255, 255), width=6)
+        d.ellipse((22, 22, 42, 42), fill=(55, 228, 255, 255))
+        return img
+
+    def _tray(self):
+        try:
+            import pystray
+        except Exception:
+            log("[yellow]Tray icon unavailable (pystray not installed) — Ctrl+Alt+P still works.[/yellow]")
+            return
+        p = self.prism
+        menu = pystray.Menu(
+            pystray.MenuItem("Show HUD   (Ctrl+Alt+P)", lambda *_: self.show(), default=True),
+            pystray.MenuItem("Microphone on", lambda *_: p.set_mic(not p.mic_on), checked=lambda _: p.mic_on),
+            pystray.MenuItem("Test voice", lambda *_: threading.Thread(target=p.test_voice, daemon=True).start()),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Restart Prism (update)", lambda *_: threading.Thread(target=p.restart, kwargs={"speak": False}, daemon=True).start()),
+            pystray.MenuItem("Quit Prism", lambda *_: self._quit()),
+        )
+        self.icon = pystray.Icon("PRISM", self._icon_image(), "PRISM — click to show the HUD", menu)
+        self.icon.run()
+
+    def _quit(self):
+        log("[dim]Quit from tray.[/dim]")
+        try:
+            if self.icon:
+                self.icon.stop()
+        finally:
+            if self.prism.mic:
+                self.prism.mic.stop()
+            os._exit(0)
 
 
 # --------------------------------------------------------------------------- #
@@ -1531,6 +1672,7 @@ def main():
             prism.hud_url = start_hud(prism, hud_cfg)
             if hud_cfg.get("open_on_start", True) and not args.no_hud_open:
                 open_hud_window(prism.hud_url, hud_cfg.get("app_window", True))
+            DesktopShell(prism, hud_cfg).start()
         except Exception as e:
             log(f"[yellow]HUD unavailable:[/yellow] {e}")
     prism.run()

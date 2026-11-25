@@ -158,6 +158,21 @@
           ]
         },
         {
+          "id": "show_hud",
+          "title": "Bring back the HUD",
+          "say": [
+            "Show the HUD",
+            "Show yourself",
+            "Bring up Prism"
+          ],
+          "does": "Restores the HUD window if it's minimised or hidden. Also: Ctrl+Alt+P from anywhere, or click the PRISM icon by the clock.",
+          "patterns": [
+            "\\b(show|bring up|bring back|open|restore)( me)?( the| your)? (hud|dashboard|interface)\\b",
+            "\\bshow yourself\\b",
+            "^(?:hey )?(bring up|show) prism\\.?$"
+          ]
+        },
+        {
           "id": "wake",
           "title": "Wake Prism",
           "say": [

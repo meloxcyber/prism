@@ -43,7 +43,7 @@ When PRISM starts it opens a JARVIS-style HUD in a chromeless Edge window (`http
 - **Command line + buttons**: type a command, **Wake**, **Test voice**, **Weather**.
 - **Launch bar**: Vercel projects and Claude artifacts, one click each.
 
-Close the window any time; reopen it at `http://127.0.0.1:7777`. `hud.open_on_start: false` stops it opening automatically, and `PRISM.bat --no-hud` turns it off.
+The HUD has its own taskbar button. If it's minimised or closed, get it back with **Ctrl+Alt+P**, by clicking the **PRISM icon by the clock** (right-click it for mic, test voice, restart and quit), or by saying *"show the HUD"*. `hud.open_on_start: false` stops it opening automatically, and `PRISM.bat --no-hud` turns it off.
 
 ## Run
 

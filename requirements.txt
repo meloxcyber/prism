@@ -7,3 +7,5 @@ pyttsx3>=2.90
 rich>=13.0
 # Optional: fully offline speech-to-text. Then set listen.stt_engine = "whisper" in config.json.
 # faster-whisper>=1.0
+pystray>=0.19  # tray icon
+Pillow>=10.0  # tray icon image
