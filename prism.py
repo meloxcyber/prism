@@ -466,11 +466,7 @@ class Transcriber:
         clean = prepare_audio(audio)
         text = None
         if self.engine == "whisper":
-            # wait briefly if the model is still loading on first use
-            for _ in range(40):
-                if self._whisper is not None or not self.status.startswith("whisper") and self.status != "loading":
-                    break
-                time.sleep(0.25)
+            # Model still downloading/loading? Don't make you wait — use Google for now.
             if self._whisper is not None:
                 text = self._whisper_tx(clean)
             else:
